@@ -15,12 +15,12 @@ One event per completed write request, `outcome: "success"` for 2xx, `outcome: "
 
 | Action | Request |
 |---|---|
-| `search.index.create` | `POST /v1/indexes` |
-| `search.index.update` | `PATCH /v1/indexes/:name` |
-| `search.index.delete` | `DELETE /v1/indexes/:name` |
-| `search.index.clear` | `POST /v1/indexes/:name/clear` |
-| `search.documents.upsert` | `PUT /v1/indexes/:name/documents` |
-| `search.document.delete` | `DELETE /v1/indexes/:name/documents/:id` |
+| `atc-search.index.create` | `POST /v1/indexes` |
+| `atc-search.index.update` | `PATCH /v1/indexes/:name` |
+| `atc-search.index.delete` | `DELETE /v1/indexes/:name` |
+| `atc-search.index.clear` | `POST /v1/indexes/:name/clear` |
+| `atc-search.documents.upsert` | `PUT /v1/indexes/:name/documents` |
+| `atc-search.document.delete` | `DELETE /v1/indexes/:name/documents/:id` |
 
 ## Event shape
 
@@ -28,7 +28,7 @@ One event per completed write request, `outcome: "success"` for 2xx, `outcome: "
 {
   "id": "0f1a…",
   "at": "2026-09-17T10:00:00.000Z",
-  "action": "search.index.create",
+  "action": "atc-search.index.create",
   "outcome": "success",
   "actor": { "type": "apikey", "id": "console" },
   "target": { "type": "…", "id": "…" },

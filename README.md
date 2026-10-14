@@ -1,4 +1,4 @@
-# search
+# atc-search
 
 Full-text search over your own data, without an external engine: named indexes, bulk-indexed documents, BM25-ranked queries with field weights, attribute filters and facet counts, highlighted results in the original spelling, type-ahead suggestions. Case, diacritics and the Turkish dotted/dotless i are folded, so `kirmizi` finds `Kırmızı`. HTTP only.
 

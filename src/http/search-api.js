@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
-import { AuditClient } from '@atc-web/service-core/audit';
-import { createErrorHandler, jsonParser, registerInfo, registerOpenApi, registerProbes, registerRequestContext, requestOptions } from '@atc-web/service-core/fastify';
+import { AuditClient } from '@atc-web/atc-service-core/audit';
+import { createErrorHandler, jsonParser, registerInfo, registerOpenApi, registerProbes, registerRequestContext, requestOptions } from '@atc-web/atc-service-core/fastify';
 import { SearchError } from '../domain/errors.js';
 import { ApiKeyAuth } from './api-key-auth.js';
 import { Schemas } from './schemas.js';
@@ -25,7 +25,7 @@ export class SearchApi {
    * @param {import('../db.js').Database} deps.db
    * @param {string} deps.version
    * @param {import('../types.js').Logger} [deps.logger]
-   * @param {import('@atc-web/service-core/audit').AuditClient} [deps.audit]
+   * @param {import('@atc-web/atc-service-core/audit').AuditClient} [deps.audit]
    */
   constructor({ config, audit, service, indexes, documents, db, version, logger }) {
     this.config = config;
@@ -64,7 +64,7 @@ export class SearchApi {
     registerProbes(app, () => this.db.ping(), { cacheMs: SearchApi.READY_CACHE_MS });
     registerOpenApi(app, new URL('../../openapi.yaml', import.meta.url));
     registerInfo(app, {
-      service: 'search',
+      service: 'atc-search',
       version: this.version,
       capabilities: ['bm25-ranking', 'facets', 'highlights', 'suggestions'],
       schemaVersion: this.db.schemaVersion,
@@ -94,7 +94,7 @@ export class SearchApi {
     const view = (/** @type {import('../types.js').IndexRow} */ i, /** @type {Map<string, { documents: number, lastIndexedAt: number }>} */ counts) => Views.index(i, counts.get(i.name), s.searches.get(i.name));
 
     // ---- indexes
-    api.post('/indexes', { config: { audit: AuditClient.route('search.index.create', (_r, b) => ({ type: 'index', id: b.index.name })) }, ...write, schema: { body: Schemas.createIndex } }, async (request, reply) => {
+    api.post('/indexes', { config: { audit: AuditClient.route('atc-search.index.create', (_r, b) => ({ type: 'index', id: b.index.name })) }, ...write, schema: { body: Schemas.createIndex } }, async (request, reply) => {
       const b = /** @type {{ name: string }} */ (request.body);
       ApiKeyAuth.assertIndex(request.apiKey, b.name);
       const row = s.createIndex(/** @type {any} */ (b), request.apiKey.id);
@@ -103,19 +103,19 @@ export class SearchApi {
     });
     api.get('/indexes', read, async (request) => { const counts = this.indexes.counts(); return { items: visible(request).map((i) => view(i, counts)) }; });
     api.get('/indexes/:name', { ...read, schema: { params: Schemas.nameParams } }, async (request) => ({ index: view(s.getIndex(name(request)), this.indexes.counts()) }));
-    api.patch('/indexes/:name', { config: { audit: AuditClient.route('search.index.update', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name }), (r) => ({ patch: r.body })) }, ...write, schema: { params: Schemas.nameParams, body: Schemas.patchIndex } }, async (request) => ({ index: view(s.updateIndex(name(request), /** @type {any} */ (request.body)), this.indexes.counts()) }));
-    api.delete('/indexes/:name', { config: { audit: AuditClient.route('search.index.delete', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name })) }, ...write, schema: { params: Schemas.nameParams } }, async (request, reply) => { s.removeIndex(name(request)); return reply.code(204).send(); });
-    api.post('/indexes/:name/clear', { config: { audit: AuditClient.route('search.index.clear', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name }), (_r, b) => ({ removed: b?.removed })) }, ...write, schema: { params: Schemas.nameParams } }, async (request) => ({ removed: s.clearIndex(name(request)) }));
+    api.patch('/indexes/:name', { config: { audit: AuditClient.route('atc-search.index.update', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name }), (r) => ({ patch: r.body })) }, ...write, schema: { params: Schemas.nameParams, body: Schemas.patchIndex } }, async (request) => ({ index: view(s.updateIndex(name(request), /** @type {any} */ (request.body)), this.indexes.counts()) }));
+    api.delete('/indexes/:name', { config: { audit: AuditClient.route('atc-search.index.delete', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name })) }, ...write, schema: { params: Schemas.nameParams } }, async (request, reply) => { s.removeIndex(name(request)); return reply.code(204).send(); });
+    api.post('/indexes/:name/clear', { config: { audit: AuditClient.route('atc-search.index.clear', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name }), (_r, b) => ({ removed: b?.removed })) }, ...write, schema: { params: Schemas.nameParams } }, async (request) => ({ removed: s.clearIndex(name(request)) }));
 
     // ---- documents
-    api.put('/indexes/:name/documents', { config: { audit: AuditClient.route('search.documents.upsert', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name }), (_r, b) => ({ created: b?.created, updated: b?.updated })) }, ...write, schema: { params: Schemas.nameParams, body: Schemas.upsert } }, async (request) => s.upsert(name(request), /** @type {{ documents: any[] }} */ (request.body).documents, request.apiKey.id));
+    api.put('/indexes/:name/documents', { config: { audit: AuditClient.route('atc-search.documents.upsert', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name }), (_r, b) => ({ created: b?.created, updated: b?.updated })) }, ...write, schema: { params: Schemas.nameParams, body: Schemas.upsert } }, async (request) => s.upsert(name(request), /** @type {{ documents: any[] }} */ (request.body).documents, request.apiKey.id));
     api.get('/indexes/:name/documents', { ...read, schema: { params: Schemas.nameParams, querystring: Schemas.browseQuery } }, async (request) => {
       const q = query(request);
       const r = s.search(name(request), { q: '', limit: q.limit ? Number(q.limit) : 50, offset: q.offset ? Number(q.offset) : 0, sort: 'newest' });
       return { items: r.hits.map(({ score: _s, ...d }) => d), total: r.total, limit: r.limit, offset: r.offset };
     });
     api.get('/indexes/:name/documents/:id', { ...read, schema: { params: Schemas.docParams } }, async (request) => ({ document: Views.document(s.getDocument(name(request), docId(request))) }));
-    api.delete('/indexes/:name/documents/:id', { config: { audit: AuditClient.route('search.document.delete', (r) => ({ type: 'document', id: /** @type {any} */ (r.params).id }), (r) => ({ index: /** @type {any} */ (r.params).name })) }, ...write, schema: { params: Schemas.docParams } }, async (request, reply) => { s.removeDocument(name(request), docId(request)); return reply.code(204).send(); });
+    api.delete('/indexes/:name/documents/:id', { config: { audit: AuditClient.route('atc-search.document.delete', (r) => ({ type: 'document', id: /** @type {any} */ (r.params).id }), (r) => ({ index: /** @type {any} */ (r.params).name })) }, ...write, schema: { params: Schemas.docParams } }, async (request, reply) => { s.removeDocument(name(request), docId(request)); return reply.code(204).send(); });
 
     // ---- search
     api.get('/indexes/:name/search', { ...read, schema: { params: Schemas.nameParams, querystring: Schemas.searchQuery } }, async (request) => {

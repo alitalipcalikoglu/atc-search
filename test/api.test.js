@@ -36,7 +36,7 @@ test('API: info', async (t) => {
   const body = json(res);
   assert.deepEqual(
     { service: body.service, version: body.version, apiVersion: body.apiVersion, capabilities: body.capabilities },
-    { service: 'search', version: SEARCH_VERSION, apiVersion: 'v1', capabilities: ['bm25-ranking', 'facets', 'highlights', 'suggestions'] },
+    { service: 'atc-search', version: SEARCH_VERSION, apiVersion: 'v1', capabilities: ['bm25-ranking', 'facets', 'highlights', 'suggestions'] },
   );
   assert.equal(typeof body.schemaVersion, 'number');
   assert.equal(typeof body.serviceCore, 'string');

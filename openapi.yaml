@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: search
+  title: atc-search
   version: "1.1.0"
   description: >-
     Full-text search over your own data: named indexes, bulk-indexed documents, BM25-ranked
@@ -30,7 +30,7 @@ tags:
 paths:
   /openapi.yaml:
     get:
-      operationId: search.openapi
+      operationId: atc-search.openapi
       summary: Download the canonical OpenAPI document
       description: Returns this service's repository-root OpenAPI 3.1 document byte-for-byte.
       security: []
@@ -43,7 +43,7 @@ paths:
 
   /health:
     get:
-      operationId: search.system.health
+      operationId: atc-search.system.health
       tags: [system]
       summary: Liveness probe
       description: >-
@@ -60,7 +60,7 @@ paths:
 
   /ready:
     get:
-      operationId: search.system.ready
+      operationId: atc-search.system.ready
       tags: [system]
       summary: Readiness probe
       description: >-
@@ -84,13 +84,13 @@ paths:
 
   /v1/info:
     get:
-      operationId: search.system.info
+      operationId: atc-search.system.info
       tags: [system]
       summary: Service identity
       description: >-
         Static instance identity: package version, `/v1` API contract version, capability list
         (fixed for this service, not instance-variable), the open SQLite schema version, and the
-        `@atc-web/service-core` version actually running. Not authenticated, not rate-limited.
+        `@atc-web/atc-service-core` version actually running. Not authenticated, not rate-limited.
       security: []
       x-stack-visibility: public
       responses:
@@ -103,7 +103,7 @@ paths:
 
   /metrics:
     get:
-      operationId: search.system.metrics
+      operationId: atc-search.system.metrics
       tags: [system]
       summary: Prometheus metrics
       description: >-
@@ -128,7 +128,7 @@ paths:
 
   /v1/indexes:
     post:
-      operationId: search.indexes.create
+      operationId: atc-search.indexes.create
       tags: [indexes]
       summary: Create an index
       description: >-
@@ -175,7 +175,7 @@ paths:
           $ref: "#/components/responses/RateLimited"
 
     get:
-      operationId: search.indexes.list
+      operationId: atc-search.indexes.list
       tags: [indexes]
       summary: List visible indexes
       description: >-
@@ -202,7 +202,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/IndexName"
     get:
-      operationId: search.indexes.get
+      operationId: atc-search.indexes.get
       tags: [indexes]
       summary: Get one index
       description: Requires a `read`-role key scoped to this index (or unscoped).
@@ -226,7 +226,7 @@ paths:
           $ref: "#/components/responses/RateLimited"
 
     patch:
-      operationId: search.indexes.patch
+      operationId: atc-search.indexes.patch
       tags: [indexes]
       summary: Update an index
       description: >-
@@ -268,7 +268,7 @@ paths:
           $ref: "#/components/responses/RateLimited"
 
     delete:
-      operationId: search.indexes.delete
+      operationId: atc-search.indexes.delete
       tags: [indexes]
       summary: Delete an index
       description: >-
@@ -293,7 +293,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/IndexName"
     post:
-      operationId: search.indexes.clear
+      operationId: atc-search.indexes.clear
       tags: [indexes]
       summary: Remove every document from an index
       description: >-
@@ -322,7 +322,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/IndexName"
     put:
-      operationId: search.documents.upsert
+      operationId: atc-search.documents.upsert
       tags: [documents]
       summary: Bulk upsert documents
       description: >-
@@ -373,7 +373,7 @@ paths:
           $ref: "#/components/responses/RateLimited"
 
     get:
-      operationId: search.documents.browse
+      operationId: atc-search.documents.browse
       tags: [documents]
       summary: Browse documents (no query)
       description: >-
@@ -427,7 +427,7 @@ paths:
       - $ref: "#/components/parameters/IndexName"
       - $ref: "#/components/parameters/DocId"
     get:
-      operationId: search.documents.get
+      operationId: atc-search.documents.get
       tags: [documents]
       summary: Get one document
       description: Requires a `read`-role key scoped to this index (or unscoped).
@@ -459,7 +459,7 @@ paths:
           $ref: "#/components/responses/RateLimited"
 
     delete:
-      operationId: search.documents.delete
+      operationId: atc-search.documents.delete
       tags: [documents]
       summary: Delete one document
       description: Requires a `write`-role key scoped to this index (or unscoped).
@@ -486,7 +486,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/IndexName"
     get:
-      operationId: search.query.get
+      operationId: atc-search.query.get
       tags: [search]
       summary: Search (query-string form)
       description: >-
@@ -590,7 +590,7 @@ paths:
           $ref: "#/components/responses/RateLimited"
 
     post:
-      operationId: search.query.post
+      operationId: atc-search.query.post
       tags: [search]
       summary: Search (JSON body form)
       description: >-
@@ -638,7 +638,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/IndexName"
     get:
-      operationId: search.suggest
+      operationId: atc-search.suggest
       tags: [search]
       summary: Title prefix suggestions
       description: >-
@@ -682,7 +682,7 @@ paths:
 
   /v1/stats:
     get:
-      operationId: search.stats.get
+      operationId: atc-search.stats.get
       tags: [stats]
       summary: Aggregate stats
       description: >-
@@ -1245,4 +1245,4 @@ components:
           description: Open SQLite schema version (`PRAGMA user_version`).
         serviceCore:
           type: string
-          description: Version of `@atc-web/service-core` actually running.
+          description: Version of `@atc-web/atc-service-core` actually running.

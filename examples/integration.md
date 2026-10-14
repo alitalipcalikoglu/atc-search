@@ -1,6 +1,6 @@
 # Site search integration
 
-Browsers never call the search service directly: the key would leak and the index would be enumerable. Put a thin endpoint in your backend (or a [gateway](https://github.com/alitalipcalikoglu/gateway) route with `injectApiKey`) and give that backend a **read** key scoped to the index.
+Browsers never call the search service directly: the key would leak and the index would be enumerable. Put a thin endpoint in your backend (or a [atc-gateway](https://github.com/alitalipcalikoglu/atc-gateway) route with `injectApiKey`) and give that backend a **read** key scoped to the index.
 
 ## Backend endpoint (Fastify)
 
