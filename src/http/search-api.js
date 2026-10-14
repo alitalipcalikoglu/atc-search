@@ -7,6 +7,7 @@ import { SearchError } from '../domain/errors.js';
 import { ApiKeyAuth } from './api-key-auth.js';
 import { Schemas } from './schemas.js';
 import { Views } from './views.js';
+import { AuditMetrics } from '../audit-metrics.js';
 
 /** @typedef {import('../config.js').Config} Config */
 /** @typedef {import('fastify').FastifyInstance} FastifyInstance */
@@ -160,6 +161,7 @@ export class SearchApi {
         '# HELP search_db_bytes Database size.',
         '# TYPE search_db_bytes gauge',
         `search_db_bytes ${this.db.sizeBytes()}`,
+        ...AuditMetrics.lines(this.audit),
         '# HELP search_process_uptime_seconds Process uptime.',
         '# TYPE search_process_uptime_seconds gauge',
         `search_process_uptime_seconds ${process.uptime().toFixed(0)}`,
