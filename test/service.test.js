@@ -77,3 +77,23 @@ test('SearchService: filters (AND across keys, OR within), facets over the match
   assert.deepEqual(s.suggest('products', 'astar'), [], 'suggestions look at titles only');
   assert.deepEqual(s.suggest('products', '   '), []);
 });
+
+test('SearchService: edge cases (replace keeps one row, removed documents vanish, unicode and quotes, unknown index, limits)', () => {
+  const { service: s } = testService();
+  s.createIndex({ name: 'notes' }, 'console');
+  s.upsert('notes', [{ id: 'a', title: 'Alpha release notes' }, { id: 'b', title: 'Beta' }], 'indexer');
+  const again = s.upsert('notes', [{ id: 'a', title: 'Gamma rewrite' }], 'indexer');
+  assert.deepEqual([again.created, again.updated], [0, 1]);
+  assert.equal(s.search('notes', { q: 'alpha' }).total, 0, 'the old text is gone after an update');
+  assert.deepEqual(s.search('notes', { q: 'gamma' }).hits.map((h) => h.id), ['a']);
+  s.removeDocument('notes', 'a');
+  assert.equal(s.search('notes', { q: 'gamma' }).total, 0, 'a deleted document is not found');
+  assert.throws(() => s.getDocument('notes', 'a'), (e) => e instanceof SearchError && e.code === 'DOCUMENT_NOT_FOUND');
+  assert.throws(() => s.search('missing', { q: 'x' }), (e) => e instanceof SearchError && e.code === 'INDEX_NOT_FOUND');
+  s.upsert('notes', [{ id: 'u', title: "O'Reilly \"quoted\" ğüşiöç <b>html</b>" }], 'indexer');
+  assert.deepEqual(s.search('notes', { q: 'gusioc' }).hits.map((h) => h.id), ['u'], 'diacritics fold');
+  assert.deepEqual(s.search('notes', { q: '"quoted"' }).hits.map((h) => h.id), ['u']);
+  assert.match(String(s.search('notes', { q: 'html', highlight: true }).hits[0].highlights?.title), /&lt;b&gt;<mark>html<\/mark>&lt;\/b&gt;/, 'markup in the text is escaped');
+  assert.equal(s.clearIndex('notes'), 2, 'clear reports the removed count');
+  assert.equal(s.search('notes', { q: '', sort: 'newest' }).total, 0);
+});
