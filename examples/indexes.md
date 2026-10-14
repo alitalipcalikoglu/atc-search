@@ -14,7 +14,7 @@ scurl -X POST $SEARCH/v1/indexes -d '{
 `201` with `Location: /v1/indexes/products`:
 
 ```json
-{ "index": { "name": "products", "description": "Shop catalogue", "weights": { "title": 8, "body": 1, "tags": 3 }, "facets": ["brand", "color", "tags"], "documents": 0, "lastIndexedAt": null, "searchesSinceStart": 0, "createdBy": "console", "createdAt": "2026-09-17T10:00:00.000Z", "updatedAt": "…" } }
+{ "index": { "name": "products", "description": "Shop catalogue", "weights": { "title": 8, "body": 1, "tags": 3 }, "facets": ["brand", "color", "tags"], "documents": 0, "lastIndexedAt": null, "searchesSinceStart": 0, "createdBy": "atc-console", "createdAt": "2026-09-17T10:00:00.000Z", "updatedAt": "…" } }
 ```
 
 - `name`: lower-case segments joined by `.`, `-` or `_`; permanent.

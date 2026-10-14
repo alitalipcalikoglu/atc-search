@@ -36,7 +36,7 @@ Index from the place that owns the data:
 - on delete: `DELETE /v1/indexes/products/documents/p1`;
 - nightly or after a migration: a full pass in batches of 500, then delete what the source no longer has (or `clear` first and re-upsert everything, accepting a short window of empty results).
 
-The `search` service never reads your database; it only knows what you send. The [atc-scheduler](https://github.com/alitalipcalikoglu/atc-scheduler) can trigger your reindex endpoint on a schedule.
+The `atc-search` service never reads your database; it only knows what you send. The [atc-scheduler](https://github.com/alitalipcalikoglu/atc-scheduler) can trigger your reindex endpoint on a schedule.
 
 ## Reading back
 

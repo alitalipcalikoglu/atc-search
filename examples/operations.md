@@ -40,7 +40,7 @@ pm2 reload search
 
 ```bash
 docker build -t atc-search .
-docker run -d -p 3010:3010 -v search-data:/data --env-file .env atc-search
+docker run -d -p 3010:3010 -v atc-search-data:/data --env-file .env atc-search
 ```
 
 ## Backups and reindexing

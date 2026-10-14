@@ -1228,7 +1228,7 @@ components:
       properties:
         service:
           type: string
-          enum: [search]
+          enum: [atc-search]
         version:
           type: string
           description: This instance's package.json version.

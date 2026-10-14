@@ -1,26 +1,26 @@
-# `search` readiness contract
+# `atc-search` readiness contract
 
 ## Purpose
-`search` lets the rest of the platform add full-text search over its own data without running a
+`atc-search` lets the rest of the platform add full-text search over its own data without running a
 separate search engine: named indexes with per-field ranking weights, batch-upserted documents,
 BM25-ranked queries with attribute filters and facet counts, HTML-safe highlighted results, and
 type-ahead suggestions — all on SQLite FTS5, with case/diacritic/Turkish-dotted-i folding so
 `kirmizi` finds `Kırmızı`.
 
 ## Dependencies
-- `audit` (`AUDIT_URL` + `AUDIT_API_KEY`): optional, both-or-neither. Same mechanism as `flags`,
-  `shortlink` and `ratelimit` — `src/net/audit-client.js` is byte-identical across all four
+- `atc-audit` (`AUDIT_URL` + `AUDIT_API_KEY`): optional, both-or-neither. Same mechanism as `atc-flags`,
+  `atc-shortlink` and `atc-ratelimit` — `src/net/audit-client.js` is byte-identical across all four
   (verified with `diff`). Unset: writes still succeed. Set: write events (index create/update/
   delete/clear, document delete) are buffered in memory and flushed on a background 2s timer, never
   on the request path. Buffered-and-unflushed events are lost on an ungraceful restart.
 
-No other service or external system is called by `search`.
+No other service or external system is called by `atc-search`.
 
 ## Durability classes (Stage 10)
 Three, verified against the code (`src/`), not assumed:
 - **Authoritative, durable**: `indexes`, `documents`, `documents_fts`, `document_attrs` — SQLite,
   `DB_PATH`. This service is the only copy of the indexed content there is; there is no separate
-  "primary" store elsewhere that `search` re-indexes from, and no code path here that rebuilds this
+  "primary" store elsewhere that `atc-search` re-indexes from, and no code path here that rebuilds this
   data from anything else. Losing this file loses the index for good, exactly like any of this
   platform's other stateful services losing their database — not a cache, not regenerable. See
   "Persistence"/"Backup"/"Restore" below.
@@ -32,8 +32,8 @@ Three, verified against the code (`src/`), not assumed:
   the *sole* source — durable or not — of every "how many searches happened" number this service
   reports (`GET /metrics`'s `search_queries_total`, `GET /v1/stats`'s `searchesSinceStart`, each
   index's `searchesSinceStart` in `GET /v1/indexes`). It resets to `0` on every restart with **no
-  durable fallback to reconcile against** — unlike, say, `ratelimit`'s durable `decisions` table
-  alongside its own process-local tally, `search` has only the one, non-durable number. See
+  durable fallback to reconcile against** — unlike, say, `atc-ratelimit`'s durable `decisions` table
+  alongside its own process-local tally, `atc-search` has only the one, non-durable number. See
   "Metrics" below for the full comparison.
 
 **Restart behavior**: the authoritative tables above survive a restart unchanged (ordinary SQLite
@@ -71,9 +71,9 @@ Migration mechanism: identical pattern to the other three services — `Database
 gated by `PRAGMA user_version`, one transaction per block. Fresh install and "upgrade from nothing"
 behave the same today (one migration). No down-migration mechanism.
 
-**No retention or cleanup job exists in this service** — unlike `flags` (`Maintenance`, hourly
-history purge), `shortlink` (`Maintenance`, hourly click purge) and `ratelimit` (`CleanupWorker`,
-counters/overrides/decisions purge), `search` has no `maintenance.js` or `worker.js` at all (checked:
+**No retention or cleanup job exists in this service** — unlike `atc-flags` (`Maintenance`, hourly
+history purge), `atc-shortlink` (`Maintenance`, hourly click purge) and `atc-ratelimit` (`CleanupWorker`,
+counters/overrides/decisions purge), `atc-search` has no `maintenance.js` or `worker.js` at all (checked:
 neither file exists, and `Application` in `src/application.js` starts nothing periodic beyond the
 HTTP server itself). Every document indexed stays until explicitly deleted or its index is cleared/
 removed — there is no automatic size or age-based eviction.
@@ -90,7 +90,7 @@ poll at any interval.
 ## Graceful shutdown
 `SIGTERM`/`SIGINT` → `Application.shutdown(reason)` (idempotent guard). Order: `await
 this.app.close()` (drain in-flight requests) → `await this.audit.close()` (stop timer, final flush)
-→ `this.db.close()` — **one step shorter than `flags`/`shortlink`/`ratelimit`**, since there is no
+→ `this.db.close()` — **one step shorter than `atc-flags`/`atc-shortlink`/`atc-ratelimit`**, since there is no
 maintenance worker to stop first. A `30_000`ms unref'd force-exit timer runs in parallel.
 `unhandledRejection` routes through the same graceful path; `uncaughtException` calls
 `process.exit(1)` immediately, skipping drain and final audit flush. PM2 `kill_timeout: 35000`ms —
@@ -118,7 +118,7 @@ same numbers and comment as the other three services.
 - Audit outbound call: `timeoutMs = 5_000` default, unchanged by `Application`.
 - Shutdown force-exit: `30_000`ms, hard-coded.
 - PM2 `listen_timeout: 10000`ms.
-- No outward per-request timeout beyond the audit client's — `search` never calls another service
+- No outward per-request timeout beyond the audit client's — `atc-search` never calls another service
   synchronously; every operation is a local SQLite query or transaction, including FTS5 matching.
 
 ## Retry policy
@@ -171,10 +171,10 @@ and document ids are caller-chosen opaque strings, not foreign keys into another
 - `search_db_bytes` — durable, `Database.sizeBytes()`.
 - `search_process_uptime_seconds` — process-local, resets on restart.
 
-**Important distinction from `ratelimit`**: `ratelimit` has *two* numbers for "how much activity
+**Important distinction from `atc-ratelimit`**: `atc-ratelimit` has *two* numbers for "how much activity
 happened" — a durable `decisions` table (used by `/v1/stats`/`/v1/policies/:name/stats`) and a
 separate process-local tally (used only by `/metrics`), so the two can be cross-checked and the
-durable one survives a restart. `search` has **no durable equivalent for search-query counts at
+durable one survives a restart. `atc-search` has **no durable equivalent for search-query counts at
 all**: `GET /v1/stats`'s `searchesSinceStart` field and every index's `searchesSinceStart` in
 `GET /v1/indexes` read the exact same process-local `SearchService.searches` Map that backs
 `search_queries_total` in `/metrics` — there is only one number, it is process-local everywhere it
@@ -185,7 +185,7 @@ durable database reads.
 ## Logging
 Same as the other three services: Fastify default request logger, `requestIdHeader: 'x-request-id'`,
 `genReqId: randomUUID`, `reqId` on every log line per
-[OBSERVABILITY.md](../../stack/docs/OBSERVABILITY.md), `req.headers.authorization` redacted. Not
+[OBSERVABILITY.md](../../atc-stack/docs/OBSERVABILITY.md), `req.headers.authorization` redacted. Not
 emitted: `traceId`, `spanId`, `route`/`op`, `durationMs` (Fastify's `responseTime` field, different
 name), `upstream`/`upstreamMs` (no proxied calls), `service`, `version`. `code` is in every JSON
 error body but only additionally logged for 500s via `request.log.error({ err }, 'unhandled error')`.
@@ -201,12 +201,12 @@ outbound calls happen in the request path, so there is nothing to propagate onwa
 ## Security model
 Bearer API keys (`SEARCH_API_KEYS=id:secret[:role[:indexes]]`), compared via SHA-256 +
 `timingSafeEqual` (same `ApiKeyAuth` pattern as the other three services). Roles: `read`, `write`,
-`readwrite` (default) — no `check`-only role (unlike `ratelimit`), since a search read is not a
+`readwrite` (default) — no `check`-only role (unlike `atc-ratelimit`), since a search read is not a
 quota-spending action that needs its own narrower role. Index scoping: a key's `indexes` list (or
 `null` for all) is enforced on every route naming an index, including hiding scoped-out indexes from
 listings and `/v1/stats`. No secret rotation support: edit `SEARCH_API_KEYS` and restart. At the
 boundary: request bodies are schema-validated with the same custom JSON content-type parser as
-`ratelimit` (clean `400 INVALID_JSON` on malformed bodies instead of Fastify's default); user search
+`atc-ratelimit` (clean `400 INVALID_JSON` on malformed bodies instead of Fastify's default); user search
 queries are tokenized and quoted by `QueryParser` before reaching FTS5, so no MATCH operator, column
 filter or wildcard from user input runs as FTS5 query syntax; highlighted output is HTML-escaped with
 only `<mark>` tags as markup. Out of scope: per-document permissions (the README states this
@@ -222,18 +222,18 @@ instances to scale").
 
 Every write path (`upsert`, `removeDocument`, `removeIndex`, `clearIndex`) is wrapped in
 `this.db.transaction()` (`BEGIN IMMEDIATE` … `COMMIT`), so two processes sharing one file would have
-their writes serialized correctly by SQLite's own locking, the same way `ratelimit`'s check/consume
+their writes serialized correctly by SQLite's own locking, the same way `atc-ratelimit`'s check/consume
 path is — there is no read-then-write-outside-a-transaction pattern in this service comparable to
-`shortlink`'s `maxClicks` issue. What would **not** be consistent across two processes is entirely
+`atc-shortlink`'s `maxClicks` issue. What would **not** be consistent across two processes is entirely
 process-local state: `SearchService.searches` (the sole source, durable or not, of every
 "searches"/"queries" number this service reports, as detailed under Metrics) and each instance's own
 10s readiness cache would diverge — one instance could report zero searches for an index the other
 instance has been serving heavily.
 
 ## Single-node / multi-node guarantees
-Running two `search` instances against the same `DB_PATH` is not a topology this repository ships or
+Running two `atc-search` instances against the same `DB_PATH` is not a topology this repository ships or
 tests. Document and index data would stay correct (transactional writes, SQLite's own locking) —
-there is no known correctness bug comparable to `shortlink`'s `maxClicks` race. The guarantee that
+there is no known correctness bug comparable to `atc-shortlink`'s `maxClicks` race. The guarantee that
 does **not** hold: search-count metrics (`search_queries_total`, `/v1/stats`'s
 `searchesSinceStart`, `/v1/indexes`' per-index `searchesSinceStart`) are entirely process-local with
 no durable backing at all, so with two instances behind a load balancer, neither instance's reported

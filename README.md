@@ -24,7 +24,7 @@ Production with Docker (mount the database directory):
 
 ```bash
 docker build -t atc-search .
-docker run -p 3010:3010 -v search-data:/data --env-file .env atc-search
+docker run -p 3010:3010 -v atc-search-data:/data --env-file .env atc-search
 ```
 
 Tests and type check:
@@ -126,7 +126,7 @@ With `AUDIT_URL` and `AUDIT_API_KEY` set, every completed write request is forwa
 
 **B — single-node stateful.** One process owns one SQLite file (`instances: 1`). Every write (upsert, delete, clear, remove-index)
 runs inside a `BEGIN IMMEDIATE` transaction, so two processes sharing one file would have correct,
-serialized writes — there's no read-then-write race like `shortlink`'s redirect path. What would not
+serialized writes — there's no read-then-write race like `atc-shortlink`'s redirect path. What would not
 be consistent is metrics: every "searches" number this service reports (`/metrics`, `/v1/stats`,
 per-index counts) comes from one process-local counter with no durable backing at all, so it resets
 on restart and would split unreconciled across two instances. See
@@ -136,8 +136,8 @@ on restart and would split unreconciled across two instances. See
 
 Requests are logged with `reqId` (accepts or generates `X-Request-Id`) and `traceId`/`spanId` (a
 trusted inbound `traceparent`, gated on `TRUST_PROXY`, continues the caller's trace with a fresh
-span-id for this hop; see [OBSERVABILITY.md](../stack/docs/OBSERVABILITY.md)). `/health` is a static check; `/ready` pings the database, cached for 10s.
-Unlike `ratelimit`, there is no durable table backing search-query counts — `search_queries_total`
+span-id for this hop; see [OBSERVABILITY.md](../atc-stack/docs/OBSERVABILITY.md)). `/health` is a static check; `/ready` pings the database, cached for 10s.
+Unlike `atc-ratelimit`, there is no durable table backing search-query counts — `search_queries_total`
 and `searchesSinceStart` are the same in-memory counter everywhere they appear. See
 [docs/READINESS.md](docs/READINESS.md) for the full contract.
 
@@ -146,7 +146,7 @@ and `searchesSinceStart` are the same in-memory counter everywhere they appear. 
 The state to protect is the SQLite file at `DB_PATH` (default `./data/search.db`, plus WAL sidecars
 while running) — the FTS5 full-text index lives inside the same file as ordinary shadow tables, so a
 plain file copy captures everything with no separate re-indexing step. Use `stack backup`/
-`stack restore` from the workspace root (see `stack/docs/UPGRADE.md`) to snapshot and restore this
+`stack restore` from the workspace root (see `atc-stack/docs/UPGRADE.md`) to snapshot and restore this
 consistently alongside the rest of the stack. On every start, before applying a pending migration
 to an existing database, the service itself also snapshots the file to
 `DB_PATH.pre-v<N>-<timestamp>` (directory overridable with `DB_BACKUP_DIR`) — a manual last resort
