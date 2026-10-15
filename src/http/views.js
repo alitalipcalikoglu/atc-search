@@ -16,7 +16,7 @@ export class Views {
    */
   static index(i, stats, searches = 0) {
     return {
-      name: i.name, description: i.description, weights: JSON.parse(i.weights), facets: /** @type {string[]} */ (JSON.parse(i.facets)),
+      name: i.name, description: i.description, weights: JSON.parse(i.weights), facets: /** @type {string[]} */ (JSON.parse(i.facets)), language: i.language,
       documents: stats?.documents ?? 0, lastIndexedAt: stats ? Views.iso(stats.lastIndexedAt) : null, searchesSinceStart: searches,
       createdBy: i.created_by, createdAt: Views.iso(i.created_at), updatedAt: Views.iso(i.updated_at),
     };

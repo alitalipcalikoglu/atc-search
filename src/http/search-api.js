@@ -27,8 +27,10 @@ export class SearchApi {
    * @param {string} deps.version
    * @param {import('../types.js').Logger} [deps.logger]
    * @param {import('@atc-web/atc-service-core/audit').AuditClient} [deps.audit]
+   * @param {import('../sync/content-sync.js').ContentSync|null} [deps.contentSync]
    */
-  constructor({ config, audit, service, indexes, documents, db, version, logger }) {
+  constructor({ config, audit, service, indexes, documents, db, version, logger, contentSync = null }) {
+    this.contentSync = contentSync;
     this.config = config;
     this.audit = audit;
     this.service = service;
@@ -67,9 +69,10 @@ export class SearchApi {
     registerInfo(app, {
       service: 'atc-search',
       version: this.version,
-      capabilities: ['bm25-ranking', 'facets', 'highlights', 'suggestions'],
+      capabilities: ['bm25-ranking', 'facets', 'highlights', 'suggestions', 'turkish-stemming', ...(this.contentSync ? ['content-sync'] : [])],
       schemaVersion: this.db.schemaVersion,
     });
+    await app.register((hooks) => this.#registerHooks(hooks));
     await app.register((api) => this.#registerV1(api), { prefix: '/v1' });
     await app.register((ops) => this.#registerMetrics(ops));
     return app;
@@ -131,10 +134,29 @@ export class SearchApi {
       return { items: s.suggest(name(request), /** @type {string} */ (q.q), q.limit ? Number(q.limit) : undefined) };
     });
 
+    // ---- mirror of atc-content (on demand; events do the same through the hook)
+    api.post('/sync/content/:namespace', { config: { audit: AuditClient.route('atc-search.content.sync', (r) => ({ type: 'namespace', id: /** @type {any} */ (r.params).namespace }), (_r, b) => ({ release: b?.release, indexed: b?.indexed })) }, ...write, schema: { params: Schemas.namespaceParams } }, async (request) => {
+      if (!this.contentSync) throw new SearchError('SYNC_DISABLED', 'content sync is off (CONTENT_URL)');
+      const ns = /** @type {{ namespace: string }} */ (request.params).namespace;
+      ApiKeyAuth.assertIndex(request.apiKey, `${/** @type {any} */ (this.config.contentSync).prefix}${ns}`);
+      return this.contentSync.sync(ns);
+    });
+
     api.get('/stats', read, async (request) => {
       const counts = this.indexes.counts();
       const items = visible(request).map((i) => view(i, counts));
       return { indexes: items.length, documents: items.reduce((a, i) => a + i.documents, 0), searchesSinceStart: items.reduce((a, i) => a + i.searchesSinceStart, 0), dbBytes: this.db.sizeBytes(), items: items.map((i) => ({ name: i.name, documents: i.documents, searchesSinceStart: i.searchesSinceStart, lastIndexedAt: i.lastIndexedAt })) };
+    });
+  }
+
+  /** Deliveries from atc-webhook-out are verified over the raw body, so this scope keeps it as a string. @param {FastifyInstance} hooks */
+  async #registerHooks(hooks) {
+    hooks.removeAllContentTypeParsers();
+    hooks.addContentTypeParser('*', { parseAs: 'string' }, (_request, body, done) => done(null, body));
+    hooks.post('/v1/hooks/webhook-out', async (request, reply) => {
+      if (!this.contentSync) throw new SearchError('SYNC_DISABLED', 'content sync is off (CONTENT_URL)');
+      const r = await this.contentSync.receive(typeof request.body === 'string' ? request.body : '', /** @type {string|undefined} */ (request.headers['x-webhook-signature']));
+      return reply.code(200).send(r);
     });
   }
 
@@ -161,6 +183,7 @@ export class SearchApi {
         '# HELP search_db_bytes Database size.',
         '# TYPE search_db_bytes gauge',
         `search_db_bytes ${this.db.sizeBytes()}`,
+        ...(this.contentSync ? ['# HELP search_content_sync_total Content release syncs by outcome since start.', '# TYPE search_content_sync_total counter', ...Object.entries(this.contentSync.counts).map(([k, v]) => `search_content_sync_total{outcome="${k}"} ${v}`)] : []),
         ...AuditMetrics.lines(this.audit),
         '# HELP search_process_uptime_seconds Process uptime.',
         '# TYPE search_process_uptime_seconds gauge',

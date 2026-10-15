@@ -8,8 +8,10 @@ export class Highlighter {
   /**
    * @param {{ text: string, prefix: boolean }[]} terms
    * @param {{ open?: string, close?: string }} [marks]
+   * @param {(folded: string) => string} [term]  The index's term function, applied to each word before comparing.
    */
-  constructor(terms, { open = '<mark>', close = '</mark>' } = {}) {
+  constructor(terms, { open = '<mark>', close = '</mark>' } = {}, term = (w) => w) {
+    this.term = term;
     this.terms = terms;
     this.open = open;
     this.close = close;
@@ -17,7 +19,8 @@ export class Highlighter {
 
   /** @param {string} token Folded token. */
   hit(token) {
-    return this.terms.some((t) => (t.prefix ? token.startsWith(t.text) : token === t.text));
+    const x = this.term(token);
+    return this.terms.some((t) => (t.prefix ? x.startsWith(t.text) || token.startsWith(t.text) : x === t.text));
   }
 
   /** @param {string} text */

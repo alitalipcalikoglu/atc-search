@@ -36,7 +36,7 @@ test('API: info', async (t) => {
   const body = json(res);
   assert.deepEqual(
     { service: body.service, version: body.version, apiVersion: body.apiVersion, capabilities: body.capabilities },
-    { service: 'atc-search', version: SEARCH_VERSION, apiVersion: 'v1', capabilities: ['bm25-ranking', 'facets', 'highlights', 'suggestions'] },
+    { service: 'atc-search', version: SEARCH_VERSION, apiVersion: 'v1', capabilities: ['bm25-ranking', 'facets', 'highlights', 'suggestions', 'turkish-stemming'] },
   );
   assert.equal(typeof body.schemaVersion, 'number');
   assert.equal(typeof body.serviceCore, 'string');
@@ -95,4 +95,14 @@ test('API: index lifecycle, bulk indexing, documents, search GET and POST, facet
   assert.equal((await app.inject({ method: 'DELETE', url: '/v1/indexes/products', headers: bearer(WRITE_KEY) })).statusCode, 204);
   assert.equal((await app.inject({ url: '/v1/indexes/products', headers: bearer(READ_KEY) })).statusCode, 404);
   assert.equal((await app.inject({ url: '/v1/indexes/products/search?q=a', headers: bearer(RW_KEY) })).statusCode, 404);
+});
+
+test('API: content sync routes answer 503 while CONTENT_URL is not set; the hook needs no API key', async (t) => {
+  const { app } = await buildApp();
+  t.after(() => app.close());
+  const manual = await app.inject({ method: 'POST', url: '/v1/sync/content/shop', headers: bearer(WRITE_KEY) });
+  assert.deepEqual([manual.statusCode, json(manual).error.code], [503, 'SYNC_DISABLED']);
+  assert.equal((await app.inject({ method: 'POST', url: '/v1/sync/content/shop', headers: bearer(READ_KEY) })).statusCode, 403);
+  const hook = await app.inject({ method: 'POST', url: '/v1/hooks/webhook-out', payload: '{}', headers: { 'content-type': 'application/json' } });
+  assert.deepEqual([hook.statusCode, json(hook).error.code], [503, 'SYNC_DISABLED']);
 });

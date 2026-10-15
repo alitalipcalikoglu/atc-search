@@ -45,5 +45,9 @@ export class Database extends CoreDatabase {
     CREATE INDEX document_attrs_lookup ON document_attrs (index_name, key, value, doc_rowid);
     CREATE INDEX document_attrs_doc ON document_attrs (doc_rowid);
     `,
+    `
+    -- Per-index language: 'tr' stems Turkish suffixes in the full-text rows and in queries.
+    ALTER TABLE indexes ADD COLUMN language TEXT NOT NULL DEFAULT 'none' CHECK (language IN ('none', 'tr'));
+    `,
   ];
 }

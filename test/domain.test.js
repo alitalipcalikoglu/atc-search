@@ -26,3 +26,15 @@ test('Highlighter: marks original spelling, escapes HTML, snippets around the fi
   assert.ok(s.startsWith('…') && s.endsWith('…') && s.includes('<mark>Kırmızı</mark> <mark>elbise</mark>'), s);
   assert.equal(new Highlighter([]).snippet('short text', 80), 'short text');
 });
+
+test('TurkishStemmer: case, possessive and plural suffixes, at least three letters left', async () => {
+  const { TurkishStemmer } = await import('../src/domain/turkish-stemmer.js');
+  const { TextFold } = await import('../src/domain/text-fold.js');
+  const stem = (/** @type {string} */ w) => TurkishStemmer.stem(TextFold.fold(w));
+  for (const w of ['kitap', 'kitaplar', 'kitapları', 'kitaplarımızdan', 'kitapta', 'kitabın'.replace('b', 'p')]) assert.equal(stem(w), 'kitap', w);
+  assert.equal(stem('evlerde'), 'evler', 'a stem keeps three letters');
+  assert.equal(stem('masada'), 'masa');
+  assert.equal(stem('öğretmenlerimize'), 'ogretmen');
+  assert.equal(stem('2024'), '2024');
+  assert.equal(stem('ev'), 'ev');
+});

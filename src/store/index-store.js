@@ -5,16 +5,16 @@ import { SearchError } from '../domain/errors.js';
 
 /** Persistence for index definitions. */
 export class IndexStore {
-  static COLUMNS = 'name, description, weights, facets, created_by, created_at, updated_at';
+  static COLUMNS = 'name, description, weights, facets, created_by, created_at, updated_at, language';
 
   /** @param {Database} db */
   constructor(db) {
     const C = IndexStore.COLUMNS;
     this.stmt = {
-      insert: db.prepare(`INSERT INTO indexes (${C}) VALUES (?, ?, ?, ?, ?, ?, ?)`),
+      insert: db.prepare(`INSERT INTO indexes (${C}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
       get: db.prepare(`SELECT ${C} FROM indexes WHERE name = ?`),
       all: db.prepare(`SELECT ${C} FROM indexes ORDER BY name`),
-      update: db.prepare(`UPDATE indexes SET description = ?, weights = ?, facets = ?, updated_at = ? WHERE name = ?`),
+      update: db.prepare(`UPDATE indexes SET description = ?, weights = ?, facets = ?, language = ?, updated_at = ? WHERE name = ?`),
       delete: db.prepare(`DELETE FROM indexes WHERE name = ?`),
       counts: db.prepare(`SELECT index_name, COUNT(*) AS n, MAX(updated_at) AS last FROM documents GROUP BY index_name`),
     };
@@ -22,7 +22,7 @@ export class IndexStore {
 
   /** @param {IndexRow} r */
   insert(r) {
-    this.stmt.insert.run(r.name, r.description, r.weights, r.facets, r.created_by, r.created_at, r.updated_at);
+    this.stmt.insert.run(r.name, r.description, r.weights, r.facets, r.created_by, r.created_at, r.updated_at, r.language);
     return r;
   }
 
@@ -44,7 +44,7 @@ export class IndexStore {
 
   /** @param {IndexRow} r */
   update(r) {
-    this.stmt.update.run(r.description, r.weights, r.facets, r.updated_at, r.name);
+    this.stmt.update.run(r.description, r.weights, r.facets, r.language, r.updated_at, r.name);
     return r;
   }
 

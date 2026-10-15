@@ -7,6 +7,7 @@ import { SearchService } from './domain/search-service.js';
 import { SearchApi } from './http/search-api.js';
 import { DocumentStore } from './store/document-store.js';
 import { IndexStore } from './store/index-store.js';
+import { ContentSync } from './sync/content-sync.js';
 
 /** Composition root: wires configuration, storage, domain and HTTP, and owns the process lifecycle. */
 export class Application {
@@ -19,6 +20,7 @@ export class Application {
     this.indexes = new IndexStore(this.db);
     this.documents = new DocumentStore(this.db);
     this.service = new SearchService({ db: this.db, indexes: this.indexes, documents: this.documents, options: config });
+    this.contentSync = config.contentSync ? new ContentSync({ service: this.service, target: config.contentSync, hookSecret: config.syncHookSecret }) : null;
     /** @type {import('fastify').FastifyInstance|null} */
     this.app = null;
     /** @type {(reason: string) => Promise<void>} */
@@ -40,7 +42,7 @@ export class Application {
 
   async start() {
     const { config } = this;
-    const api = new SearchApi({ config, audit: this.audit, service: this.service, indexes: this.indexes, documents: this.documents, db: this.db, version: this.version });
+    const api = new SearchApi({ config, audit: this.audit, service: this.service, contentSync: this.contentSync, indexes: this.indexes, documents: this.documents, db: this.db, version: this.version });
     const app = await api.build();
     this.app = app;
     const { shutdown } = Lifecycle.install({

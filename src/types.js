@@ -32,6 +32,8 @@
  * @property {number} maxPage
  * @property {number} maxOffset
  * @property {number} maxFacetValues
+ * @property {{ url: string, apiKey: string, timeoutMs: number, prefix: string, language: 'none'|'tr' }|null} contentSync  Mirror published content releases; null = off.
+ * @property {string|null} syncHookSecret  Verifies `POST /v1/hooks/webhook-out`; null = the hook is off.
  */
 
 /** @typedef {import('./config.js').Config} Config */
@@ -47,6 +49,7 @@
  * @property {string} description
  * @property {string} weights       JSON {@link Weights}.
  * @property {string} facets        JSON string[] of attribute keys the console offers as facets.
+ * @property {'none'|'tr'} language  `tr` = Turkish stemming.
  * @property {string} created_by
  * @property {number} created_at
  * @property {number} updated_at

@@ -17,14 +17,16 @@ export class Schemas {
     return { type: 'object', additionalProperties: false, required, properties };
   }
 
-  static createIndex = Schemas.body(['name'], { name: Schemas.name, description: Schemas.description, weights: Schemas.weights, facets: Schemas.facets });
-  static patchIndex = { type: 'object', additionalProperties: false, minProperties: 1, properties: { description: Schemas.description, weights: Schemas.weights, facets: Schemas.facets } };
+  static language = { type: 'string', enum: ['none', 'tr'] };
+  static createIndex = Schemas.body(['name'], { name: Schemas.name, description: Schemas.description, weights: Schemas.weights, facets: Schemas.facets, language: Schemas.language });
+  static patchIndex = { type: 'object', additionalProperties: false, minProperties: 1, properties: { description: Schemas.description, weights: Schemas.weights, facets: Schemas.facets, language: Schemas.language } };
   static upsert = Schemas.body(['documents'], { documents: { type: 'array', minItems: 1, maxItems: 10_000, items: { type: 'object', required: ['id', 'title'], properties: { id: Schemas.docId, title: { type: 'string' }, body: { type: 'string' }, tags: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 100 } }, attrs: { type: 'object' }, url: { type: 'string', maxLength: 2048 } }, additionalProperties: false } } });
   static searchBody = Schemas.body([], {
     q: { type: 'string', maxLength: 500 }, filters: { type: 'object', maxProperties: 20, additionalProperties: { type: 'array', maxItems: 50, items: { type: 'string', maxLength: 200 } } },
     facets: Schemas.facets, limit: { type: 'integer', minimum: 1, maximum: 1000 }, offset: { type: 'integer', minimum: 0 }, highlight: { type: 'boolean' }, sort: Schemas.sort,
   });
 
+  static namespaceParams = { type: 'object', properties: { namespace: { type: 'string', pattern: '^[a-z0-9]+([.\\-_][a-z0-9]+)*$', maxLength: 64 } }, required: ['namespace'] };
   static nameParams = { type: 'object', properties: { name: Schemas.name }, required: ['name'] };
   static docParams = { type: 'object', properties: { name: Schemas.name, id: Schemas.docId }, required: ['name', 'id'] };
   /** GET form: `?q=&limit=&offset=&highlight=true&facets=a,b&sort=&filter.<key>=v1,v2`. */

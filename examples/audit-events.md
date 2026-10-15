@@ -19,6 +19,7 @@ One event per completed write request, `outcome: "success"` for 2xx, `outcome: "
 | `atc-search.index.update` | `PATCH /v1/indexes/:name` |
 | `atc-search.index.delete` | `DELETE /v1/indexes/:name` |
 | `atc-search.index.clear` | `POST /v1/indexes/:name/clear` |
+| `atc-search.content.sync` | `POST /v1/sync/content/:namespace` |
 | `atc-search.documents.upsert` | `PUT /v1/indexes/:name/documents` |
 | `atc-search.document.delete` | `DELETE /v1/indexes/:name/documents/:id` |
 

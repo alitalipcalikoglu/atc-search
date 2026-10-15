@@ -57,9 +57,9 @@ Errors are JSON: `{ "error": { "code", "message", "details?" } }`.
 | Method | Path | Role | Purpose |
 |---|---|---|---|
 | GET | `/health`, `/ready`, `/v1/info` | none | Liveness; readiness (database, cached 10 s); service identity (version, API version, capabilities, schema version, service-core version). |
-| POST | `/v1/indexes` | write | `{ name, description?, weights?, facets? }` → `201 { index }`. |
+| POST | `/v1/indexes` | write | `{ name, description?, weights?, facets?, language? }` → `201 { index }`. `language: "tr"` stems Turkish suffixes. |
 | GET | `/v1/indexes`, `/v1/indexes/:name` | read | Visible indexes with document counts; one index. |
-| PATCH / DELETE | `/v1/indexes/:name` | write | `{ description?, weights?, facets? }`; delete with its documents. |
+| PATCH / DELETE | `/v1/indexes/:name` | write | `{ description?, weights?, facets?, language? }` (a new language reindexes in place); delete with its documents. |
 | POST | `/v1/indexes/:name/clear` | write | Remove every document, keep the index → `{ removed }`. |
 | PUT | `/v1/indexes/:name/documents` | write | `{ documents: [...] }` upsert → `{ created, updated }`. |
 | GET | `/v1/indexes/:name/documents` | read | Browse newest first (`limit`, `offset`). |
@@ -67,10 +67,12 @@ Errors are JSON: `{ "error": { "code", "message", "details?" } }`.
 | GET | `/v1/indexes/:name/search` | read | `q`, `limit`, `offset`, `highlight`, `facets=a,b`, `sort`, `filter.<key>=v1,v2`. |
 | POST | `/v1/indexes/:name/search` | read | `{ q?, filters?, facets?, limit?, offset?, highlight?, sort? }`, same result: `{ total, hits, facets, query }`. |
 | GET | `/v1/indexes/:name/suggest` | read | `q`, `limit` → titles that start with the typed words. |
+| POST | `/v1/sync/content/:namespace` | write | Mirror the newest published atc-content release of a namespace into `content-<namespace>`. |
+| POST | `/v1/hooks/webhook-out` | none (signed) | Release events from atc-webhook-out trigger the same sync. |
 | GET | `/v1/stats` | read | Indexes, documents, searches since start, database size. |
 | GET | `/metrics` | read | Prometheus text. |
 
-Error codes: `INDEX_NOT_FOUND`, `INDEX_EXISTS`, `DOCUMENT_NOT_FOUND`, `INVALID_DOCUMENT`, `INVALID_QUERY`, `BATCH_TOO_LARGE`, `DOCUMENT_TOO_LARGE`, `VALIDATION_FAILED`, `INVALID_JSON`, `UNAUTHORIZED`, `FORBIDDEN`, `RATE_LIMITED`.
+Error codes: `INDEX_NOT_FOUND`, `INDEX_EXISTS`, `DOCUMENT_NOT_FOUND`, `INVALID_DOCUMENT`, `INVALID_QUERY`, `BATCH_TOO_LARGE`, `DOCUMENT_TOO_LARGE`, `VALIDATION_FAILED`, `INVALID_JSON`, `UNAUTHORIZED`, `FORBIDDEN`, `RATE_LIMITED`, `NAMESPACE_NOT_FOUND`, `UPSTREAM_FAILED`, `SYNC_DISABLED`, `HOOK_DISABLED`, `INVALID_SIGNATURE`.
 
 ### Index and search in two calls
 
@@ -115,7 +117,8 @@ Class-based; dependencies are injected through constructors, `src/application.js
 - Typo tolerance / fuzzy matching: prefix matching covers the type-ahead case; add a synonyms pass on your side if needed.
 - Numeric ranges and geo: bucket values into strings when indexing (`priceBand`, `city`).
 - Per-document permissions: use one index per audience, or filter by an `audience` attribute from a trusted backend.
-- Language-specific stemming: folding and prefix matching go a long way; stemming would need per-language rules.
+- Stemming beyond Turkish, and dictionary-based stemming: the `tr` analyzer is rule-based (case, possessive and plural suffixes) and approximate; other languages use folding and prefix matching.
+- Mirrors of services other than atc-content: other data is pushed by its owner through `PUT /documents`.
 - Cluster / replication: one process per database file; split indexes across instances to scale.
 
 ## Audit events

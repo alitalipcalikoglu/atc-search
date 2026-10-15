@@ -97,3 +97,18 @@ test('SearchService: edge cases (replace keeps one row, removed documents vanish
   assert.equal(s.clearIndex('notes'), 2, 'clear reports the removed count');
   assert.equal(s.search('notes', { q: '', sort: 'newest' }).total, 0);
 });
+
+test('SearchService: a Turkish index finds inflected forms; switching the language reindexes', () => {
+  const { service: s } = testService();
+  s.createIndex({ name: 'blog', language: 'tr' }, 'console');
+  s.upsert('blog', [{ id: 'b1', title: 'Kitaplarımızdan seçmeler', body: 'Öğretmenlerimize teşekkürler.' }, { id: 'b2', title: 'Bahçe işleri' }], 'indexer');
+  assert.deepEqual(s.search('blog', { q: 'kitap' }).hits.map((h) => h.id), ['b1']);
+  assert.deepEqual(s.search('blog', { q: 'öğretmen' }).hits.map((h) => h.id), ['b1']);
+  assert.deepEqual(s.search('blog', { q: 'kitapları seçme' }).hits.map((h) => h.id), ['b1']);
+  assert.equal(s.search('blog', { q: 'kitap', highlight: true }).hits[0].highlights?.title, '<mark>Kitaplarımızdan</mark> seçmeler', 'the inflected word is marked');
+  s.updateIndex('blog', { language: 'none' });
+  assert.equal(s.search('blog', { q: '"öğretmen"' }).total, 0, 'without stemming the inflected form no longer matches a whole word');
+  s.updateIndex('blog', { language: 'tr' });
+  assert.equal(s.search('blog', { q: '"öğretmen"' }).total, 1);
+  assert.throws(() => s.createIndex({ name: 'x', language: /** @type {any} */ ('de') }, 'console'), (e) => e instanceof SearchError && e.code === 'INVALID_QUERY');
+});

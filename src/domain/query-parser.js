@@ -16,15 +16,16 @@ export class QueryParser {
 
   /**
    * @param {string} input
+   * @param {(folded: string) => string} [term]  The index's term function (stemming).
    * @returns {ParsedQuery}
    */
-  static parse(input) {
+  static parse(input, term = (w) => w) {
     if (input.length > 500) throw new SearchError('INVALID_QUERY', 'query is longer than 500 characters');
     /** @type {string[]} */ const positive = [];
     /** @type {string[]} */ const negative = [];
     /** @type {{ text: string, prefix: boolean }[]} */ const terms = [];
     const parts = [...input.matchAll(/(-?)"([^"]*)"|(-?)(\S+)/g)]
-      .map((m) => ({ neg: (m[1] || m[3]) === '-', phrase: m[2] !== undefined, words: TextFold.tokens(TextFold.fold(m[2] ?? m[4])).map((t) => t.text) }))
+      .map((m) => ({ neg: (m[1] || m[3]) === '-', phrase: m[2] !== undefined, words: TextFold.tokens(TextFold.fold(m[2] ?? m[4])).map((t) => term(t.text)) }))
       .filter((p) => p.words.length);
     parts.forEach((p, i) => {
       const last = i === parts.length - 1 && !p.phrase && !p.neg;

@@ -13,6 +13,11 @@ export class SearchError extends Error {
     DOCUMENT_TOO_LARGE: 413,
     INVALID_CURSOR: 400,
     FORBIDDEN: 403,
+    NAMESPACE_NOT_FOUND: 404,
+    UPSTREAM_FAILED: 502,
+    HOOK_DISABLED: 503,
+    SYNC_DISABLED: 503,
+    INVALID_SIGNATURE: 401,
   };
 
   /**

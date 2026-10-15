@@ -30,6 +30,8 @@ export class Config {
     this.maxPage = v.maxPage;
     this.maxOffset = v.maxOffset;
     this.maxFacetValues = v.maxFacetValues;
+    this.contentSync = v.contentSync;
+    this.syncHookSecret = v.syncHookSecret;
     Object.freeze(this);
   }
 
@@ -37,6 +39,27 @@ export class Config {
    * @param {NodeJS.ProcessEnv} [env]
    * @returns {Config}
    */
+  /** @param {EnvReader} r */
+  static #contentSync(r) {
+    const url = r.optional('CONTENT_URL').replace(/\/+$/, '');
+    const apiKey = r.optional('CONTENT_API_KEY');
+    if (Boolean(url) !== Boolean(apiKey)) throw new ConfigError('CONTENT_URL and CONTENT_API_KEY must be set together');
+    if (!url) return null;
+    if (!/^https?:\/\/[^\s]+$/.test(url)) throw new ConfigError('CONTENT_URL must be an absolute http(s) URL');
+    const prefix = r.optional('CONTENT_INDEX_PREFIX') || 'content-';
+    if (!/^[a-z0-9]+([.\-_][a-z0-9]+)*[.\-_]?$/.test(prefix)) throw new ConfigError('CONTENT_INDEX_PREFIX must be lower-case letters, digits and . - _');
+    const language = r.optional('CONTENT_INDEX_LANGUAGE') || 'tr';
+    if (language !== 'none' && language !== 'tr') throw new ConfigError('CONTENT_INDEX_LANGUAGE must be none or tr');
+    return { url, apiKey, timeoutMs: r.integer('CONTENT_TIMEOUT_MS', 10_000, { min: 500 }), prefix, language: /** @type {'none'|'tr'} */ (language) };
+  }
+
+  /** @param {string} value */
+  static #hookSecret(value) {
+    if (!value) return null;
+    if (value.length < Config.MIN_SECRET_LENGTH) throw new ConfigError(`SYNC_HOOK_SECRET must be at least ${Config.MIN_SECRET_LENGTH} characters`);
+    return value;
+  }
+
   static fromEnv(env = process.env) {
     const r = new EnvReader(env);
 
@@ -62,6 +85,8 @@ export class Config {
       maxPage: r.integer('MAX_PAGE', 100, { min: 1, max: 1_000 }),
       maxOffset: r.integer('MAX_OFFSET', 10_000, { min: 0 }),
       maxFacetValues: r.integer('MAX_FACET_VALUES', 20, { min: 1, max: 200 }),
+      contentSync: Config.#contentSync(r),
+      syncHookSecret: Config.#hookSecret(r.optional('SYNC_HOOK_SECRET')),
     });
   }
 

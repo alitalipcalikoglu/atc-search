@@ -1,4 +1,4 @@
-import { TextFold } from '../domain/text-fold.js';
+import { Analyzer } from '../domain/analyzer.js';
 
 /** @typedef {import('../db.js').Database} Database */
 /** @typedef {import('../types.js').DocumentRow} DocumentRow */
@@ -23,6 +23,7 @@ export class DocumentStore {
       delete: db.prepare(`DELETE FROM documents WHERE index_name = ? AND id = ?`),
       clear: db.prepare(`DELETE FROM documents WHERE index_name = ?`),
       rowids: db.prepare(`SELECT rowid FROM documents WHERE index_name = ?`),
+      texts: db.prepare(`SELECT rowid, title, body, tags FROM documents WHERE index_name = ?`),
       ftsInsert: db.prepare(`INSERT INTO documents_fts (rowid, title, body, tags) VALUES (?, ?, ?, ?)`),
       ftsDelete: db.prepare(`DELETE FROM documents_fts WHERE rowid = ?`),
       attrsDelete: db.prepare(`DELETE FROM document_attrs WHERE doc_rowid = ?`),
@@ -43,9 +44,10 @@ export class DocumentStore {
    * @param {{ index: string, id: string, title: string, body: string, tags: string[], attrs: Record<string, unknown>, url: string|null, source: string }} d
    * @param {[string, string][]} attrRows  Flattened `[key, value]` pairs.
    * @param {number} now
+   * @param {Analyzer} [analyzer]
    * @returns {'created'|'updated'}
    */
-  upsert(d, attrRows, now) {
+  upsert(d, attrRows, now, analyzer = Analyzer.for('none')) {
     const existing = this.get(d.index, d.id);
     let rowid;
     let outcome = /** @type {'created'|'updated'} */ ('created');
@@ -58,7 +60,7 @@ export class DocumentStore {
     } else {
       rowid = Number(this.stmt.insert.run(d.index, d.id, d.title, d.body, JSON.stringify(d.tags), JSON.stringify(d.attrs), d.url, d.source, now, now).lastInsertRowid);
     }
-    this.stmt.ftsInsert.run(rowid, TextFold.fold(d.title), TextFold.fold(d.body), TextFold.fold(d.tags.join(' ')));
+    this.stmt.ftsInsert.run(rowid, analyzer.text(d.title), analyzer.text(d.body), analyzer.text(d.tags.join(' ')));
     for (const [k, v] of attrRows) this.stmt.attrInsert.run(rowid, d.index, k, v);
     return outcome;
   }
@@ -77,6 +79,16 @@ export class DocumentStore {
     const rows = /** @type {{ rowid: number }[]} */ (this.stmt.rowids.all(index));
     for (const r of rows) this.stmt.ftsDelete.run(Number(r.rowid));
     return Number(this.stmt.clear.run(index).changes);
+  }
+
+  /** Rewrite every full-text row of an index (after its language changed). Caller holds the transaction. @param {string} index @param {Analyzer} analyzer */
+  reindex(index, analyzer) {
+    const rows = /** @type {{ rowid: number, title: string, body: string, tags: string }[]} */ (this.stmt.texts.all(index));
+    for (const r of rows) {
+      this.stmt.ftsDelete.run(Number(r.rowid));
+      this.stmt.ftsInsert.run(Number(r.rowid), analyzer.text(r.title), analyzer.text(r.body), analyzer.text(/** @type {string[]} */ (JSON.parse(r.tags)).join(' ')));
+    }
+    return rows.length;
   }
 
   total() {

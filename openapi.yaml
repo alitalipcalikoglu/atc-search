@@ -706,6 +706,82 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /v1/sync/content/{namespace}:
+    post:
+      operationId: atc-search.contentSync.run
+      tags: [indexes]
+      summary: Mirror the newest published release of an atc-content namespace now
+      description: >-
+        Requires a `write`-role key whose scope covers `<CONTENT_INDEX_PREFIX><namespace>`. Fetches the newest
+        release from atc-content and makes that index hold exactly its strings: one document per key and locale
+        (`<locale>:<key>`), the text as title, the key's description as body, `namespace`/`locale`/`key` as
+        attributes, `locale` as facet. The index is created on first use with `CONTENT_INDEX_LANGUAGE`.
+        `503 SYNC_DISABLED` while `CONTENT_URL` is not set.
+      x-stack-visibility: authenticated
+      x-required-role: write
+      parameters:
+        - { name: namespace, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9]+([.\\-_][a-z0-9]+)*$', maxLength: 64 } }
+      responses:
+        "200":
+          description: Synced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentSyncResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: NAMESPACE_NOT_FOUND (atc-content does not know it).
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "502":
+          description: UPSTREAM_FAILED (atc-content answered with an error).
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "503":
+          description: SYNC_DISABLED.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /v1/hooks/webhook-out:
+    post:
+      operationId: atc-search.hooks.webhookOut
+      tags: [indexes]
+      summary: Content release events from atc-webhook-out (signed, no API key)
+      description: >-
+        A subscription on atc-webhook-out for `content.release.published` and `content.release.rolled_back`
+        points here with `SYNC_HOOK_SECRET` as its secret. The delivery's `x-webhook-signature` is verified
+        over the raw body; a release event syncs its namespace like `POST /v1/sync/content/{namespace}`,
+        other event types are ignored. A failed sync answers with an error, so atc-webhook-out retries it.
+      security: []
+      x-stack-visibility: internal
+      parameters:
+        - { name: x-webhook-signature, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Synced, or ignored for other event types.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [outcome]
+                properties:
+                  outcome: { type: string, enum: [synced, ignored] }
+                  index: { type: string }
+                  release: { type: integer }
+                  removed: { type: integer }
+                  indexed: { type: integer }
+        "401":
+          description: INVALID_SIGNATURE.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "503":
+          description: SYNC_DISABLED or HOOK_DISABLED (no `SYNC_HOOK_SECRET`).
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
 components:
   securitySchemes:
     BearerAuth:
@@ -862,6 +938,7 @@ components:
         - description
         - weights
         - facets
+        - language
         - documents
         - lastIndexedAt
         - searchesSinceStart
@@ -879,6 +956,10 @@ components:
           type: array
           items:
             type: string
+        language:
+          type: string
+          enum: [none, tr]
+          description: '`tr` stems Turkish suffixes (case, possessive, plural) when indexing and searching; changing it reindexes the index in place. Default `none`.'
         documents:
           type: integer
           description: Live document count.
@@ -928,6 +1009,10 @@ components:
           $ref: "#/components/schemas/WeightsInput"
         facets:
           $ref: "#/components/schemas/FacetKeys"
+        language:
+          type: string
+          enum: [none, tr]
+          description: '`tr` stems Turkish suffixes (case, possessive, plural) when indexing and searching; changing it reindexes the index in place. Default `none`.'
 
     PatchIndexRequest:
       type: object
@@ -941,6 +1026,19 @@ components:
           $ref: "#/components/schemas/WeightsInput"
         facets:
           $ref: "#/components/schemas/FacetKeys"
+        language:
+          type: string
+          enum: [none, tr]
+          description: '`tr` stems Turkish suffixes (case, possessive, plural) when indexing and searching; changing it reindexes the index in place. Default `none`.'
+
+    ContentSyncResult:
+      type: object
+      required: [index, release, removed, indexed]
+      properties:
+        index: { type: string }
+        release: { type: integer }
+        removed: { type: integer, description: Documents of the previous release. }
+        indexed: { type: integer }
 
     ClearResult:
       type: object

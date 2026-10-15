@@ -1,6 +1,7 @@
 import { SearchError } from './errors.js';
 import { Highlighter } from './highlighter.js';
 import { QueryParser } from './query-parser.js';
+import { Analyzer } from './analyzer.js';
 import { TextFold } from './text-fold.js';
 
 /** @typedef {import('../types.js').IndexRow} IndexRow */
@@ -36,13 +37,13 @@ export class SearchService {
   // ---- indexes
 
   /**
-   * @param {{ name: string, description?: string, weights?: Partial<Weights>, facets?: string[] }} input
+   * @param {{ name: string, description?: string, weights?: Partial<Weights>, facets?: string[], language?: 'none'|'tr' }} input
    * @param {string} actor
    */
   createIndex(input, actor) {
     if (this.indexes.get(input.name)) throw new SearchError('INDEX_EXISTS', `index "${input.name}" already exists`);
     const now = this.now();
-    return this.indexes.insert({ name: input.name, description: input.description ?? '', weights: JSON.stringify(SearchService.#weights(input.weights)), facets: JSON.stringify(SearchService.#facets(input.facets)), created_by: actor, created_at: now, updated_at: now });
+    return this.indexes.insert({ name: input.name, description: input.description ?? '', weights: JSON.stringify(SearchService.#weights(input.weights)), facets: JSON.stringify(SearchService.#facets(input.facets)), language: SearchService.#language(input.language), created_by: actor, created_at: now, updated_at: now });
   }
 
   /** @param {string} name */
@@ -52,16 +53,23 @@ export class SearchService {
 
   /**
    * @param {string} name
-   * @param {{ description?: string, weights?: Partial<Weights>, facets?: string[] }} patch
+   * @param {{ description?: string, weights?: Partial<Weights>, facets?: string[], language?: 'none'|'tr' }} patch
    */
   updateIndex(name, patch) {
     const row = this.indexes.require(name);
-    return this.indexes.update({
+    const language = patch.language === undefined ? row.language : SearchService.#language(patch.language);
+    const next = {
       ...row,
       description: patch.description ?? row.description,
       weights: patch.weights === undefined ? row.weights : JSON.stringify(SearchService.#weights({ ...JSON.parse(row.weights), ...patch.weights })),
       facets: patch.facets === undefined ? row.facets : JSON.stringify(SearchService.#facets(patch.facets)),
+      language,
       updated_at: this.now(),
+    };
+    // A new language rewrites the index's full-text rows in the same transaction, so queries never see a mix.
+    return this.db.transaction(() => {
+      if (language !== row.language) this.documents.reindex(name, Analyzer.for(language));
+      return this.indexes.update(next);
     });
   }
 
@@ -91,15 +99,36 @@ export class SearchService {
     const prepared = docs.map((d, i) => this.#validate(d, i));
     const ids = new Set(prepared.map((p) => p.doc.id));
     if (ids.size !== prepared.length) throw new SearchError('INVALID_DOCUMENT', 'duplicate ids in one batch');
+    const analyzer = Analyzer.for(this.indexes.require(index).language);
     return this.db.transaction(() => {
       const now = this.now();
       let created = 0;
       let updated = 0;
       for (const p of prepared) {
-        if (this.documents.upsert({ index, source, ...p.doc }, p.attrRows, now) === 'created') created++;
+        if (this.documents.upsert({ index, source, ...p.doc }, p.attrRows, now, analyzer) === 'created') created++;
         else updated++;
       }
       return { created, updated };
+    });
+  }
+
+  /**
+   * Make an index hold exactly these documents (created on first use), in one transaction: what a
+   * mirror of another system does. Not bound by MAX_BATCH; every document is still validated.
+   * @param {string} index
+   * @param {DocumentInput[]} docs
+   * @param {string} source
+   * @param {{ description: string, facets: string[], language: 'none'|'tr' }} create  Definition when the index does not exist yet.
+   */
+  replaceIndex(index, docs, source, create) {
+    const prepared = docs.map((d, i) => this.#validate(d, i));
+    return this.db.transaction(() => {
+      if (!this.indexes.get(index)) this.createIndex({ name: index, ...create }, source);
+      const analyzer = Analyzer.for(this.indexes.require(index).language);
+      const removed = this.documents.clear(index);
+      const now = this.now();
+      for (const p of prepared) this.documents.upsert({ index, source, ...p.doc }, p.attrRows, now, analyzer);
+      return { removed, indexed: prepared.length };
     });
   }
 
@@ -129,10 +158,11 @@ export class SearchService {
     const offset = q.offset ?? 0;
     if (offset > this.options.maxOffset) throw new SearchError('INVALID_QUERY', `offset must be <= ${this.options.maxOffset}`);
     const filters = SearchService.#filters(q.filters);
-    const parsed = QueryParser.parse(q.q ?? '');
+    const analyzer = Analyzer.for(row.language);
+    const parsed = QueryParser.parse(q.q ?? '', (w) => analyzer.term(w));
     const weights = /** @type {Weights} */ (JSON.parse(row.weights));
     const { total, rows } = this.documents.search({ index, match: parsed.match, weights, filters, sort: q.sort ?? 'relevance', limit, offset });
-    const hl = q.highlight ? new Highlighter(parsed.terms) : null;
+    const hl = q.highlight ? new Highlighter(parsed.terms, {}, (w) => analyzer.term(w)) : null;
     const facetKeys = SearchService.#facets(q.facets);
     const facets = Object.fromEntries(facetKeys.map((key) => [key, this.documents.facet({ index, match: parsed.match, filters, key, limit: this.options.maxFacetValues })]));
     this.searches.set(index, (this.searches.get(index) ?? 0) + 1);
@@ -148,8 +178,8 @@ export class SearchService {
    * @param {string} index @param {string} q @param {number} [limit]
    */
   suggest(index, q, limit = 10) {
-    this.indexes.require(index);
-    const words = TextFold.tokens(TextFold.fold(q)).map((t) => t.text);
+    const analyzer = Analyzer.for(this.indexes.require(index).language);
+    const words = TextFold.tokens(TextFold.fold(q)).map((t) => analyzer.term(t.text));
     if (!words.length) return [];
     const match = `title : "${words.join(' ')}"*`;
     return this.documents.suggest(index, match, Math.min(limit, this.options.maxPage));
@@ -185,6 +215,13 @@ export class SearchService {
     const bytes = Buffer.byteLength(JSON.stringify(doc));
     if (bytes > this.options.maxDocBytes) throw new SearchError('DOCUMENT_TOO_LARGE', `${at} is ${bytes} bytes, limit ${this.options.maxDocBytes}`);
     return { doc, attrRows };
+  }
+
+  /** @param {string|undefined} l @returns {'none'|'tr'} */
+  static #language(l) {
+    if (l === undefined) return 'none';
+    if (l !== 'none' && l !== 'tr') throw new SearchError('INVALID_QUERY', 'language must be "none" or "tr"');
+    return l;
   }
 
   /** @param {Partial<Weights>|undefined} w @returns {Weights} */
