@@ -13,6 +13,11 @@ type-ahead suggestions — all on SQLite FTS5, with case/diacritic/Turkish-dotte
   (verified with `diff`). Unset: writes still succeed. Set: write events (index create/update/
   delete/clear, document delete) are buffered in memory and flushed on a background 2s timer, never
   on the request path. Buffered-and-unflushed events are lost on an ungraceful restart.
+- `atc-content` (`CONTENT_URL` + `CONTENT_API_KEY`, a read key): optional, both-or-neither. Mirrors
+  published content into `CONTENT_INDEX_PREFIX` + namespace indexes (`CONTENT_INDEX_LANGUAGE`):
+  `content.release.*` events arrive through an atc-webhook-out subscription at
+  `POST /v1/hooks/webhook-out` (`SYNC_HOOK_SECRET`; empty = hook off) and a resync reads content
+  page by page with `CONTENT_TIMEOUT_MS`. Content being down fails only the mirror, never a search.
 
 No other service or external system is called by `atc-search`.
 
