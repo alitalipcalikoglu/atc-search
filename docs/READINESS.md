@@ -108,8 +108,8 @@ same numbers and comment as the other three services.
   count toward this too).
 - `MAX_PAGE` (env, default `100`, range 1–1,000) — largest `limit` a search/browse call may request
   (`Math.min(q.limit ?? 20, maxPage)`, silently clamped rather than rejected).
-- `MAX_OFFSET` (env, default `10_000`) — deepest `offset`; exceeding it is a hard `400
-  INVALID_QUERY`, not a clamp.
+- `MAX_OFFSET` (env, default `10_000`) — deepest result position a `cursor` can reach; `nextCursor`
+  is `null` past it and a cursor beyond it is a hard `400 INVALID_QUERY`.
 - `MAX_FACET_VALUES` (env, default `20`, range 1–200) — values returned per requested facet.
 - `RATE_LIMIT_MAX` (env, default `1_200`) requests per API key per minute.
 - `max_memory_restart: '300M'` in `ecosystem.config.cjs`.
@@ -129,6 +129,9 @@ error/timeout keeps it buffered for the next `flushMs = 2_000`ms tick. Nothing e
 retries — a failed batch upsert or search returns an error to the caller with no internal retry.
 
 ## Idempotency
+- `POST /v1/indexes`, `POST /v1/indexes/:name/clear` and `POST /v1/sync/content/:namespace` honour
+  `Idempotency-Key` (core `Idempotency`, 24 h, scoped per API key and caller): a repeat replays the
+  first 2xx answer with `Idempotent-Replayed: true`.
 - `POST /v1/indexes` (create) is **not** idempotent: repeating with the same `name` fails `409
   INDEX_EXISTS`.
 - `PATCH /v1/indexes/:name` is idempotent in result for a fixed patch.

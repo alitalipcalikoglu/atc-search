@@ -88,7 +88,7 @@
  * @property {Record<string, string[]>} [filters]   AND across keys, OR within a key.
  * @property {string[]} [facets]
  * @property {number} [limit]
- * @property {number} [offset]
+ * @property {string} [cursor]  Opaque `nextCursor` of the previous page.
  * @property {boolean} [highlight]
  * @property {'relevance'|'newest'|'oldest'} [sort]
  */

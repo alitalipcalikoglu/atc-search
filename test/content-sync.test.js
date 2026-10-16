@@ -31,7 +31,7 @@ test('content sync: a release becomes one document per key and locale, replacing
   const first = await sync.sync('shop', 1);
   assert.deepEqual(first, { index: 'content-shop', release: 1, removed: 0, indexed: 3 }, 'empty values are skipped');
   assert.equal(service.getIndex('content-shop').language, 'tr');
-  assert.deepEqual(service.search('content-shop', { q: 'sepet', filters: { locale: ['tr'] } }).hits.map((h) => h.id).sort(), ['tr:cart.empty', 'tr:cart.title'], 'stemmed: "sepet" finds "Sepetiniz"');
+  assert.deepEqual(service.search('content-shop', { q: 'sepet', filters: { locale: ['tr'] } }).items.map((h) => h.id).sort(), ['tr:cart.empty', 'tr:cart.title'], 'stemmed: "sepet" finds "Sepetiniz"');
   const doc = service.getDocument('content-shop', 'tr:cart.title');
   assert.deepEqual([doc.title, doc.body, JSON.parse(doc.attrs).key], ['Sepetiniz', 'Cart heading', 'cart.title']);
   const latest = await sync.sync('shop');

@@ -155,7 +155,7 @@ export class SearchService {
   search(index, q) {
     const row = this.indexes.require(index);
     const limit = Math.min(q.limit ?? 20, this.options.maxPage);
-    const offset = q.offset ?? 0;
+    const offset = q.cursor ? SearchService.#offsetOf(q.cursor) : 0;
     if (offset > this.options.maxOffset) throw new SearchError('INVALID_QUERY', `offset must be <= ${this.options.maxOffset}`);
     const filters = SearchService.#filters(q.filters);
     const analyzer = Analyzer.for(row.language);
@@ -166,11 +166,20 @@ export class SearchService {
     const facetKeys = SearchService.#facets(q.facets);
     const facets = Object.fromEntries(facetKeys.map((key) => [key, this.documents.facet({ index, match: parsed.match, filters, key, limit: this.options.maxFacetValues })]));
     this.searches.set(index, (this.searches.get(index) ?? 0) + 1);
+    const next = offset + rows.length;
     return {
-      total, limit, offset, query: parsed.match,
-      hits: rows.map((r) => ({ ...SearchService.view(r), score: parsed.match ? -Number(r.rank) : null, ...(hl ? { highlights: { title: hl.mark(r.title), body: hl.snippet(r.body) } } : {}) })),
+      total, query: parsed.match,
+      nextCursor: rows.length === limit && next < total && next <= this.options.maxOffset ? Buffer.from(`o:${next}`).toString('base64url') : null,
+      items: rows.map((r) => ({ ...SearchService.view(r), score: parsed.match ? -Number(r.rank) : null, ...(hl ? { highlights: { title: hl.mark(r.title), body: hl.snippet(r.body) } } : {}) })),
       facets,
     };
+  }
+
+  /** Result pages are ranked, so the cursor carries the position. @param {string} cursor */
+  static #offsetOf(cursor) {
+    const m = /^o:(0|[1-9][0-9]{0,6})$/.exec(Buffer.from(cursor, 'base64url').toString());
+    if (!m) throw new SearchError('INVALID_QUERY', 'invalid cursor');
+    return Number(m[1]);
   }
 
   /**

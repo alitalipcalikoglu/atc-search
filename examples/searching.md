@@ -6,8 +6,8 @@ scurl "$SEARCH/v1/indexes/products/search?q=kırmızı%20elb&limit=10"
 
 ```json
 {
-  "total": 2, "limit": 10, "offset": 0, "query": "\"kirmizi\" AND \"elb\"*",
-  "hits": [
+  "total": 2, "nextCursor": null, "query": "\"kirmizi\" AND \"elb\"*",
+  "items": [
     { "id": "p1", "title": "Kırmızı Yazlık Elbise", "body": "…", "tags": ["elbise", "yaz"], "attrs": { "color": "red", … }, "url": "https://shop.example/p/p1", "source": "shop-backend", "createdAt": "…", "updatedAt": "…", "score": 0.0000173 },
     …
   ],
@@ -15,7 +15,7 @@ scurl "$SEARCH/v1/indexes/products/search?q=kırmızı%20elb&limit=10"
 }
 ```
 
-`POST /v1/indexes/products/search` takes the same options as JSON (`q`, `filters`, `facets`, `limit`, `offset`, `highlight`, `sort`) and is the better choice for anything beyond a plain query string.
+`POST /v1/indexes/products/search` takes the same options as JSON (`q`, `filters`, `facets`, `limit`, `cursor`, `highlight`, `sort`) and is the better choice for anything beyond a plain query string.
 
 ## Query syntax
 
@@ -38,7 +38,7 @@ BM25 per field, weighted by the index's `weights`: a word in the title counts mo
 
 ## Paging and sorting
 
-`limit` up to `MAX_PAGE` (100), `offset` up to `MAX_OFFSET` (10 000). `sort=relevance` (default with a query), `newest`, `oldest`. An empty `q` browses the index with filters only, newest first.
+`limit` up to `MAX_PAGE` (100). For the next page pass `nextCursor` back as `cursor`; it is `null` on the last page and once the next page would start past `MAX_OFFSET` (10 000) results, so refine the query instead of paging deeper. `sort=relevance` (default with a query), `newest`, `oldest`. An empty `q` browses the index with filters only, newest first.
 
 ## Empty results
 

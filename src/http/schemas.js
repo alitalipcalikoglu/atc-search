@@ -6,7 +6,7 @@ export class Schemas {
   static weights = { type: 'object', additionalProperties: false, properties: { title: { type: 'number' }, body: { type: 'number' }, tags: { type: 'number' } } };
   static facets = { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 64 } };
   static limit = { type: 'string', pattern: '^([1-9]|[1-9][0-9]|[1-9][0-9][0-9]|1000)$' };
-  static offset = { type: 'string', pattern: '^(0|[1-9][0-9]{0,6})$' };
+  static cursor = { type: 'string', maxLength: 64 };
   static sort = { type: 'string', enum: ['relevance', 'newest', 'oldest'] };
 
   /**
@@ -23,17 +23,17 @@ export class Schemas {
   static upsert = Schemas.body(['documents'], { documents: { type: 'array', minItems: 1, maxItems: 10_000, items: { type: 'object', required: ['id', 'title'], properties: { id: Schemas.docId, title: { type: 'string' }, body: { type: 'string' }, tags: { type: 'array', maxItems: 100, items: { type: 'string', maxLength: 100 } }, attrs: { type: 'object' }, url: { type: 'string', maxLength: 2048 } }, additionalProperties: false } } });
   static searchBody = Schemas.body([], {
     q: { type: 'string', maxLength: 500 }, filters: { type: 'object', maxProperties: 20, additionalProperties: { type: 'array', maxItems: 50, items: { type: 'string', maxLength: 200 } } },
-    facets: Schemas.facets, limit: { type: 'integer', minimum: 1, maximum: 1000 }, offset: { type: 'integer', minimum: 0 }, highlight: { type: 'boolean' }, sort: Schemas.sort,
+    facets: Schemas.facets, limit: { type: 'integer', minimum: 1, maximum: 1000 }, cursor: Schemas.cursor, highlight: { type: 'boolean' }, sort: Schemas.sort,
   });
 
   static namespaceParams = { type: 'object', properties: { namespace: { type: 'string', pattern: '^[a-z0-9]+([.\\-_][a-z0-9]+)*$', maxLength: 64 } }, required: ['namespace'] };
   static nameParams = { type: 'object', properties: { name: Schemas.name }, required: ['name'] };
   static docParams = { type: 'object', properties: { name: Schemas.name, id: Schemas.docId }, required: ['name', 'id'] };
-  /** GET form: `?q=&limit=&offset=&highlight=true&facets=a,b&sort=&filter.<key>=v1,v2`. */
+  /** GET form: `?q=&limit=&cursor=&highlight=true&facets=a,b&sort=&filter.<key>=v1,v2`. */
   static searchQuery = {
     type: 'object', additionalProperties: { type: 'string', maxLength: 2000 },
-    properties: { q: { type: 'string', maxLength: 500 }, limit: Schemas.limit, offset: Schemas.offset, highlight: { type: 'string', enum: ['true', 'false'] }, facets: { type: 'string', maxLength: 1000 }, sort: Schemas.sort },
+    properties: { q: { type: 'string', maxLength: 500 }, limit: Schemas.limit, cursor: Schemas.cursor, highlight: { type: 'string', enum: ['true', 'false'] }, facets: { type: 'string', maxLength: 1000 }, sort: Schemas.sort },
   };
   static suggestQuery = { type: 'object', additionalProperties: false, required: ['q'], properties: { q: { type: 'string', minLength: 1, maxLength: 200 }, limit: Schemas.limit } };
-  static browseQuery = { type: 'object', additionalProperties: false, properties: { limit: Schemas.limit, offset: Schemas.offset } };
+  static browseQuery = { type: 'object', additionalProperties: false, properties: { limit: Schemas.limit, cursor: Schemas.cursor } };
 }

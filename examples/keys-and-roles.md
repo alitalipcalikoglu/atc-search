@@ -29,7 +29,7 @@ The key id is recorded as `createdBy` on indexes and `source` on documents.
 | 401 | `UNAUTHORIZED` | Missing or unknown secret; `WWW-Authenticate: Bearer`. |
 | 403 | `FORBIDDEN` | Wrong role, or index outside the key's scope. |
 | 400 | `VALIDATION_FAILED`, `INVALID_JSON` | Schema or JSON problems. |
-| 400 | `INVALID_DOCUMENT`, `INVALID_QUERY` | Bad document content; bad query, filter, facet, weight or offset. |
+| 400 | `INVALID_DOCUMENT`, `INVALID_QUERY` | Bad document content; bad query, filter, facet, weight or cursor. |
 | 404 | `INDEX_NOT_FOUND`, `DOCUMENT_NOT_FOUND`, `NOT_FOUND` | |
 | 409 | `INDEX_EXISTS` | |
 | 413 | `BATCH_TOO_LARGE`, `DOCUMENT_TOO_LARGE` | Above `MAX_BATCH` / `MAX_DOC_BYTES`. |

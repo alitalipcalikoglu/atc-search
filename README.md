@@ -62,10 +62,10 @@ Errors are JSON: `{ "error": { "code", "message", "details?" } }`.
 | PATCH / DELETE | `/v1/indexes/:name` | write | `{ description?, weights?, facets?, language? }` (a new language reindexes in place); delete with its documents. |
 | POST | `/v1/indexes/:name/clear` | write | Remove every document, keep the index → `{ removed }`. |
 | PUT | `/v1/indexes/:name/documents` | write | `{ documents: [...] }` upsert → `{ created, updated }`. |
-| GET | `/v1/indexes/:name/documents` | read | Browse newest first (`limit`, `offset`). |
+| GET | `/v1/indexes/:name/documents` | read | Browse newest first (`limit`, `cursor`). |
 | GET / DELETE | `/v1/indexes/:name/documents/:id` | read / write | One document; delete. |
-| GET | `/v1/indexes/:name/search` | read | `q`, `limit`, `offset`, `highlight`, `facets=a,b`, `sort`, `filter.<key>=v1,v2`. |
-| POST | `/v1/indexes/:name/search` | read | `{ q?, filters?, facets?, limit?, offset?, highlight?, sort? }`, same result: `{ total, hits, facets, query }`. |
+| GET | `/v1/indexes/:name/search` | read | `q`, `limit`, `cursor`, `highlight`, `facets=a,b`, `sort`, `filter.<key>=v1,v2`. |
+| POST | `/v1/indexes/:name/search` | read | `{ q?, filters?, facets?, limit?, cursor?, highlight?, sort? }`, same result: `{ total, items, nextCursor, facets, query }`. |
 | GET | `/v1/indexes/:name/suggest` | read | `q`, `limit` → titles that start with the typed words. |
 | POST | `/v1/sync/content/:namespace` | write | Mirror the newest published atc-content release of a namespace into `content-<namespace>`. |
 | POST | `/v1/hooks/webhook-out` | none (signed) | Release events from atc-webhook-out trigger the same sync. |
@@ -82,6 +82,11 @@ curl -s -X PUT http://localhost:3010/v1/indexes/products/documents -H "Authoriza
 curl -s "http://localhost:3010/v1/indexes/products/search?q=kirmizi&highlight=true&facets=brand" -H "Authorization: Bearer $KEY"
 ```
 
+## Conventions
+
+- Lists answer `{ items, nextCursor }`; pass `nextCursor` back as `cursor`. Search results use the same shape (`items` are the hits) plus `total`, `facets` and `query`; the index list and suggestions are complete lists (`nextCursor: null`). Document ids are the caller's own natural keys.
+- Index creation, index clear and content sync honour `Idempotency-Key`: a repeat with the same key (per API key and caller — the console's `X-Actor` counts — for 24 h) replays the first 2xx answer with `Idempotent-Replayed: true`; another body is `409 IDEMPOTENCY_MISMATCH`.
+
 ## Examples
 
 Scenario walkthroughs for every feature live in [examples/](examples/README.md), including a [site search integration](examples/integration.md) with backend endpoint and debounced client.
@@ -95,7 +100,7 @@ All settings come from environment variables and are validated at startup. See [
 - API keys compared in constant time; per-key rate limit; read/write roles checked before body validation; index scoping on every endpoint that names an index, including listings and stats.
 - User queries are tokenised and quoted before reaching FTS5: no operator, column filter or wildcard from the input runs as syntax.
 - Highlights are HTML-escaped; only the `<mark>` tags are markup.
-- Documents are bounded (`MAX_DOC_BYTES`, `MAX_ATTRS`), batches bounded (`MAX_BATCH`), pages and offsets bounded (`MAX_PAGE`, `MAX_OFFSET`), bodies capped (`BODY_LIMIT`); unknown fields rejected.
+- Documents are bounded (`MAX_DOC_BYTES`, `MAX_ATTRS`), batches bounded (`MAX_BATCH`), pages and paging depth bounded (`MAX_PAGE`, `MAX_OFFSET`), bodies capped (`BODY_LIMIT`); unknown fields rejected.
 - `Cache-Control: no-store` and `X-Content-Type-Options: nosniff` on every response; container runs as the unprivileged `node` user.
 
 ## Code layout

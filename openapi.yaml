@@ -129,6 +129,8 @@ paths:
   /v1/indexes:
     post:
       operationId: atc-search.indexes.create
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       tags: [indexes]
       summary: Create an index
       description: >-
@@ -294,6 +296,8 @@ paths:
       - $ref: "#/components/parameters/IndexName"
     post:
       operationId: atc-search.indexes.clear
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       tags: [indexes]
       summary: Remove every document from an index
       description: >-
@@ -380,7 +384,7 @@ paths:
         Requires a `read`-role key scoped to this index (or unscoped). Equivalent to an empty
         search sorted newest-first; every returned item omits `score` entirely (it is stripped,
         not `null`, unlike a real search hit). Default `limit` is **50** here (search's default is
-        20), clamped to `maxPage` (default 100, `MAX_PAGE`). Default `offset` is 0.
+        20), clamped to `maxPage` (default 100, `MAX_PAGE`). Pass `nextCursor` back as `cursor` for the next page.
       x-stack-visibility: authenticated
       x-required-role: read
       x-index-scoped: true
@@ -390,13 +394,11 @@ paths:
           description: Page size. Default 50, clamped to `maxPage` (default 100).
           schema:
             $ref: "#/components/schemas/LimitParam"
-        - name: offset
+        - name: cursor
           in: query
-          description: >-
-            Row offset. Default 0. Rejected with 400 `INVALID_QUERY` if greater than `maxOffset`
-            (default 10000, `MAX_OFFSET`).
+          description: Opaque `nextCursor` from the previous page.
           schema:
-            $ref: "#/components/schemas/OffsetParam"
+            $ref: "#/components/schemas/CursorParam"
       responses:
         "200":
           description: A page of documents, newest first.
@@ -406,8 +408,8 @@ paths:
                 $ref: "#/components/schemas/BrowseResponse"
         "400":
           description: >-
-            `INVALID_QUERY` (`offset` greater than `maxOffset`) or `VALIDATION_FAILED` (`limit`/
-            `offset` fail their pattern, or an unknown query parameter is present — this endpoint's
+            `INVALID_QUERY` (a malformed `cursor`, or one past `maxOffset`) or `VALIDATION_FAILED` (`limit`/
+            `cursor` fail their pattern, or an unknown query parameter is present — this endpoint's
             querystring schema is strict, unlike the search endpoints).
           content:
             application/json:
@@ -508,7 +510,9 @@ paths:
         the request body schema rejects any unknown field (`additionalProperties: false`).
 
         Default `limit` is **20** here (browse's default is 50), clamped to `maxPage` (default
-        100). Default `offset` is 0, `sort` is `relevance`, `highlight` is `false`.
+        100). Default `sort` is `relevance`, `highlight` is `false`. Pass `nextCursor` back as `cursor`
+        for the next page; it is `null` on the last page and once the next page would start past
+        `maxOffset` (default 10000, `MAX_OFFSET`).
       x-stack-visibility: authenticated
       x-required-role: read
       x-index-scoped: true
@@ -527,13 +531,11 @@ paths:
           description: Page size. Default 20, clamped to `maxPage` (default 100).
           schema:
             $ref: "#/components/schemas/LimitParam"
-        - name: offset
+        - name: cursor
           in: query
-          description: >-
-            Row offset. Default 0. Rejected with 400 `INVALID_QUERY` if greater than `maxOffset`
-            (default 10000).
+          description: Opaque `nextCursor` from the previous page.
           schema:
-            $ref: "#/components/schemas/OffsetParam"
+            $ref: "#/components/schemas/CursorParam"
         - name: highlight
           in: query
           description: >-
@@ -573,7 +575,7 @@ paths:
                 $ref: "#/components/schemas/SearchResult"
         "400":
           description: >-
-            `INVALID_QUERY` (offset beyond `maxOffset`, more than 32 search terms, an invalid
+            `INVALID_QUERY` (a malformed `cursor` or one past `maxOffset`, more than 32 search terms, an invalid
             `facets` key, or an invalid `filter.<key>` attribute key / more than 50 values for one
             filter key).
           content:
@@ -599,7 +601,7 @@ paths:
         `GET` form, the request body schema is strict: `additionalProperties: false`, `filters` is
         one explicit object field (`{ "<attrKey>": ["v1", "v2"] }`, up to 20 keys, up to 50 values
         per key), and `highlight` is a real JSON boolean. Default `limit` is 20, clamped to
-        `maxPage` (default 100); default `offset` is 0; default `sort` is `relevance`.
+        `maxPage` (default 100); default `sort` is `relevance`; `cursor` takes the previous `nextCursor`.
       x-stack-visibility: authenticated
       x-required-role: read
       x-index-scoped: true
@@ -618,7 +620,7 @@ paths:
                 $ref: "#/components/schemas/SearchResult"
         "400":
           description: >-
-            `INVALID_QUERY` (offset beyond `maxOffset`, more than 32 search terms, an invalid
+            `INVALID_QUERY` (a malformed `cursor` or one past `maxOffset`, more than 32 search terms, an invalid
             `facets`/`filters` attribute key) or `VALIDATION_FAILED` (body fails schema
             validation, e.g. an unknown field).
           content:
@@ -720,6 +722,7 @@ paths:
       x-stack-visibility: authenticated
       x-required-role: write
       parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
         - { name: namespace, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9]+([.\\-_][a-z0-9]+)*$', maxLength: 64 } }
       responses:
         "200":
@@ -797,6 +800,12 @@ components:
         Bearer` header; an insufficient role or an out-of-scope index both return 403 `FORBIDDEN`.
 
   parameters:
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: "Optional. Repeats of this POST with the same key (per API key, 24 h) replay the first 2xx answer with `Idempotent-Replayed: true` instead of running again; the same key with another method, path or body is `409 IDEMPOTENCY_MISMATCH`, while the first still runs `409 IDEMPOTENCY_IN_PROGRESS`."
+      schema: { type: string, pattern: '^[A-Za-z0-9._:-]{8,255}$' }
     IndexName:
       name: name
       in: path
@@ -886,10 +895,10 @@ components:
       description: 1-1000 as a plain decimal string, no leading zero.
       pattern: '^([1-9]|[1-9][0-9]|[1-9][0-9][0-9]|1000)$'
 
-    OffsetParam:
+    CursorParam:
       type: string
-      description: 0 or a positive decimal string, no leading zero.
-      pattern: '^(0|[1-9][0-9]{0,6})$'
+      maxLength: 64
+      description: Opaque `nextCursor` of the previous page.
 
     SortParam:
       type: string
@@ -988,8 +997,9 @@ components:
 
     IndexListResponse:
       type: object
-      required: [items]
+      required: [items, nextCursor]
       properties:
+        nextCursor: { type: "null", description: Always null; the list is complete. }
         items:
           type: array
           items:
@@ -1130,7 +1140,7 @@ components:
 
     BrowseResponse:
       type: object
-      required: [items, total, limit, offset]
+      required: [items, total, nextCursor]
       properties:
         items:
           type: array
@@ -1139,10 +1149,9 @@ components:
             $ref: "#/components/schemas/DocumentView"
         total:
           type: integer
-        limit:
-          type: integer
-        offset:
-          type: integer
+        nextCursor:
+          type: [string, "null"]
+          description: Pass as `cursor` for the next page; `null` on the last page.
 
     Highlights:
       type: object
@@ -1181,20 +1190,21 @@ components:
 
     SearchResult:
       type: object
-      required: [total, limit, offset, query, hits, facets]
+      required: [total, nextCursor, query, items, facets]
       properties:
         total:
           type: integer
-        limit:
-          type: integer
-        offset:
-          type: integer
+        nextCursor:
+          type: [string, "null"]
+          description: >-
+            Pass as `cursor` for the next page; `null` on the last page and when the next page
+            would start past `maxOffset`.
         query:
           type: string
           description: >-
             The parsed FTS5 match expression actually run (not the raw `q`/`filter.*` input) —
             empty string when the input had no usable terms.
-        hits:
+        items:
           type: array
           items:
             $ref: "#/components/schemas/SearchHit"
@@ -1230,10 +1240,10 @@ components:
           minimum: 1
           maximum: 1000
           description: Default 20 when omitted, clamped to `maxPage` (default 100).
-        offset:
-          type: integer
-          minimum: 0
-          description: Default 0 when omitted.
+        cursor:
+          type: string
+          maxLength: 64
+          description: Opaque `nextCursor` of the previous page.
         highlight:
           type: boolean
           description: Real JSON boolean here (the `GET` form uses a `"true"`/`"false"` string).
@@ -1251,8 +1261,9 @@ components:
 
     SuggestResponse:
       type: object
-      required: [items]
+      required: [items, nextCursor]
       properties:
+        nextCursor: { type: "null", description: Always null; suggestions are one short list. }
         items:
           type: array
           description: Title matches only — not the full `DocumentView`.

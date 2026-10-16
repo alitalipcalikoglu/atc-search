@@ -3,6 +3,7 @@ import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 import { AuditClient } from '@atc-web/atc-service-core/audit';
 import { createErrorHandler, jsonParser, registerInfo, registerOpenApi, registerProbes, registerRequestContext, requestOptions } from '@atc-web/atc-service-core/fastify';
+import { Idempotency } from '@atc-web/atc-service-core/idempotency';
 import { SearchError } from '../domain/errors.js';
 import { ApiKeyAuth } from './api-key-auth.js';
 import { Schemas } from './schemas.js';
@@ -64,6 +65,8 @@ export class SearchApi {
       reply.header('x-content-type-options', 'nosniff');
       reply.header('cache-control', 'no-store');
     });
+    // Opt-in per route (config.idempotent): repeats with the same Idempotency-Key replay the first 2xx answer.
+    Idempotency.register(app, { raw: this.db.raw });
     registerProbes(app, () => this.db.ping(), { cacheMs: SearchApi.READY_CACHE_MS });
     registerOpenApi(app, new URL('../../openapi.yaml', import.meta.url));
     registerInfo(app, {
@@ -98,25 +101,25 @@ export class SearchApi {
     const view = (/** @type {import('../types.js').IndexRow} */ i, /** @type {Map<string, { documents: number, lastIndexedAt: number }>} */ counts) => Views.index(i, counts.get(i.name), s.searches.get(i.name));
 
     // ---- indexes
-    api.post('/indexes', { config: { audit: AuditClient.route('atc-search.index.create', (_r, b) => ({ type: 'index', id: b.index.name })) }, ...write, schema: { body: Schemas.createIndex } }, async (request, reply) => {
+    api.post('/indexes', { config: { idempotent: true, audit: AuditClient.route('atc-search.index.create', (_r, b) => ({ type: 'index', id: b.index.name })) }, ...write, schema: { body: Schemas.createIndex } }, async (request, reply) => {
       const b = /** @type {{ name: string }} */ (request.body);
       ApiKeyAuth.assertIndex(request.apiKey, b.name);
       const row = s.createIndex(/** @type {any} */ (b), request.apiKey.id);
       reply.header('location', `/v1/indexes/${row.name}`);
       return reply.code(201).send({ index: view(row, this.indexes.counts()) });
     });
-    api.get('/indexes', read, async (request) => { const counts = this.indexes.counts(); return { items: visible(request).map((i) => view(i, counts)) }; });
+    api.get('/indexes', read, async (request) => { const counts = this.indexes.counts(); return { items: visible(request).map((i) => view(i, counts)), nextCursor: null }; });
     api.get('/indexes/:name', { ...read, schema: { params: Schemas.nameParams } }, async (request) => ({ index: view(s.getIndex(name(request)), this.indexes.counts()) }));
     api.patch('/indexes/:name', { config: { audit: AuditClient.route('atc-search.index.update', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name }), (r) => ({ patch: r.body })) }, ...write, schema: { params: Schemas.nameParams, body: Schemas.patchIndex } }, async (request) => ({ index: view(s.updateIndex(name(request), /** @type {any} */ (request.body)), this.indexes.counts()) }));
     api.delete('/indexes/:name', { config: { audit: AuditClient.route('atc-search.index.delete', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name })) }, ...write, schema: { params: Schemas.nameParams } }, async (request, reply) => { s.removeIndex(name(request)); return reply.code(204).send(); });
-    api.post('/indexes/:name/clear', { config: { audit: AuditClient.route('atc-search.index.clear', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name }), (_r, b) => ({ removed: b?.removed })) }, ...write, schema: { params: Schemas.nameParams } }, async (request) => ({ removed: s.clearIndex(name(request)) }));
+    api.post('/indexes/:name/clear', { config: { idempotent: true, audit: AuditClient.route('atc-search.index.clear', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name }), (_r, b) => ({ removed: b?.removed })) }, ...write, schema: { params: Schemas.nameParams } }, async (request) => ({ removed: s.clearIndex(name(request)) }));
 
     // ---- documents
     api.put('/indexes/:name/documents', { config: { audit: AuditClient.route('atc-search.documents.upsert', (r) => ({ type: 'index', id: /** @type {any} */ (r.params).name }), (_r, b) => ({ created: b?.created, updated: b?.updated })) }, ...write, schema: { params: Schemas.nameParams, body: Schemas.upsert } }, async (request) => s.upsert(name(request), /** @type {{ documents: any[] }} */ (request.body).documents, request.apiKey.id));
     api.get('/indexes/:name/documents', { ...read, schema: { params: Schemas.nameParams, querystring: Schemas.browseQuery } }, async (request) => {
       const q = query(request);
-      const r = s.search(name(request), { q: '', limit: q.limit ? Number(q.limit) : 50, offset: q.offset ? Number(q.offset) : 0, sort: 'newest' });
-      return { items: r.hits.map(({ score: _s, ...d }) => d), total: r.total, limit: r.limit, offset: r.offset };
+      const r = s.search(name(request), { q: '', limit: q.limit ? Number(q.limit) : 50, cursor: q.cursor, sort: 'newest' });
+      return { items: r.items.map(({ score: _s, ...d }) => d), total: r.total, nextCursor: r.nextCursor };
     });
     api.get('/indexes/:name/documents/:id', { ...read, schema: { params: Schemas.docParams } }, async (request) => ({ document: Views.document(s.getDocument(name(request), docId(request))) }));
     api.delete('/indexes/:name/documents/:id', { config: { audit: AuditClient.route('atc-search.document.delete', (r) => ({ type: 'document', id: /** @type {any} */ (r.params).id }), (r) => ({ index: /** @type {any} */ (r.params).name })) }, ...write, schema: { params: Schemas.docParams } }, async (request, reply) => { s.removeDocument(name(request), docId(request)); return reply.code(204).send(); });
@@ -126,16 +129,16 @@ export class SearchApi {
       const q = query(request);
       /** @type {Record<string, string[]>} */ const filters = {};
       for (const [k, v] of Object.entries(q)) if (k.startsWith('filter.') && v !== undefined) filters[k.slice(7)] = v.split(',');
-      return s.search(name(request), { q: q.q ?? '', filters, facets: q.facets ? q.facets.split(',') : undefined, limit: q.limit ? Number(q.limit) : undefined, offset: q.offset ? Number(q.offset) : undefined, highlight: q.highlight === 'true', sort: /** @type {any} */ (q.sort) });
+      return s.search(name(request), { q: q.q ?? '', filters, facets: q.facets ? q.facets.split(',') : undefined, limit: q.limit ? Number(q.limit) : undefined, cursor: q.cursor, highlight: q.highlight === 'true', sort: /** @type {any} */ (q.sort) });
     });
     api.post('/indexes/:name/search', { ...read, schema: { params: Schemas.nameParams, body: Schemas.searchBody } }, async (request) => s.search(name(request), /** @type {any} */ (request.body ?? {})));
     api.get('/indexes/:name/suggest', { ...read, schema: { params: Schemas.nameParams, querystring: Schemas.suggestQuery } }, async (request) => {
       const q = query(request);
-      return { items: s.suggest(name(request), /** @type {string} */ (q.q), q.limit ? Number(q.limit) : undefined) };
+      return { items: s.suggest(name(request), /** @type {string} */ (q.q), q.limit ? Number(q.limit) : undefined), nextCursor: null };
     });
 
     // ---- mirror of atc-content (on demand; events do the same through the hook)
-    api.post('/sync/content/:namespace', { config: { audit: AuditClient.route('atc-search.content.sync', (r) => ({ type: 'namespace', id: /** @type {any} */ (r.params).namespace }), (_r, b) => ({ release: b?.release, indexed: b?.indexed })) }, ...write, schema: { params: Schemas.namespaceParams } }, async (request) => {
+    api.post('/sync/content/:namespace', { config: { idempotent: true, audit: AuditClient.route('atc-search.content.sync', (r) => ({ type: 'namespace', id: /** @type {any} */ (r.params).namespace }), (_r, b) => ({ release: b?.release, indexed: b?.indexed })) }, ...write, schema: { params: Schemas.namespaceParams } }, async (request) => {
       if (!this.contentSync) throw new SearchError('SYNC_DISABLED', 'content sync is off (CONTENT_URL)');
       const ns = /** @type {{ namespace: string }} */ (request.params).namespace;
       ApiKeyAuth.assertIndex(request.apiKey, `${/** @type {any} */ (this.config.contentSync).prefix}${ns}`);

@@ -6,17 +6,17 @@ Browsers never call the search service directly: the key would leak and the inde
 
 ```js
 app.get('/api/search', async (req, reply) => {
-  const { q = '', page = '1', brand, color } = req.query;
+  const { q = '', cursor, brand, color } = req.query;
   const limit = 20;
   const res = await fetch(`${process.env.SEARCH_URL}/v1/indexes/products/search`, {
     method: 'POST',
     headers: { authorization: `Bearer ${process.env.SEARCH_API_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ q, limit, offset: (Number(page) - 1) * limit, highlight: true, facets: ['brand', 'color'], filters: { ...(brand ? { brand: [brand] } : {}), ...(color ? { color: [color] } : {}) } }),
+    body: JSON.stringify({ q, limit, ...(cursor ? { cursor } : {}), highlight: true, facets: ['brand', 'color'], filters: { ...(brand ? { brand: [brand] } : {}), ...(color ? { color: [color] } : {}) } }),
     signal: AbortSignal.timeout(3_000),
   });
   if (!res.ok) return reply.code(503).send({ error: 'search unavailable' });
   const r = await res.json();
-  return { total: r.total, page: Number(page), hits: r.hits.map((h) => ({ id: h.id, title: h.highlights.title, snippet: h.highlights.body, url: h.url })), facets: r.facets };
+  return { total: r.total, nextCursor: r.nextCursor, hits: r.items.map((h) => ({ id: h.id, title: h.highlights.title, snippet: h.highlights.body, url: h.url })), facets: r.facets };
 });
 ```
 

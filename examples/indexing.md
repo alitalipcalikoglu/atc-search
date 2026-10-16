@@ -42,5 +42,5 @@ The `atc-search` service never reads your database; it only knows what you send.
 
 ```bash
 scurl $SEARCH/v1/indexes/products/documents/p1                 # one document as stored
-scurl "$SEARCH/v1/indexes/products/documents?limit=50&offset=0" # browse, newest first
+scurl "$SEARCH/v1/indexes/products/documents?limit=50" # browse, newest first; pass nextCursor back as &cursor=
 ```
